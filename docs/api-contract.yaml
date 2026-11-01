@@ -1,0 +1,1050 @@
+openapi: 3.1.0
+info:
+  title: Quick Playing API
+  version: 0.5.1
+  description: |
+    Hợp đồng API giữa frontend và backend. Cập nhật file này TRƯỚC khi thay đổi code.
+    Mọi lỗi trả về dạng `Error` `{ code, message }` (không stack trace, không lỗi nội bộ).
+
+    Lịch sử thay đổi:
+    - 0.5.1 (patch, Giai đoạn 4 "Production" — chỉ mô tả, không đổi endpoint/schema): thêm mục "Header
+      bảo mật" (mọi response có `X-Content-Type-Options`, `Content-Security-Policy`,
+      `Cross-Origin-Resource-Policy`, `Referrer-Policy`; `Cache-Control: no-store` là mặc định cho mọi
+      endpoint); thêm server production (cùng origin với web, `/api` qua reverse proxy).
+    - 0.5.0 (minor, Giai đoạn 3 "Người dùng" — không phá vỡ schema đã có; có thay đổi hành vi liệt kê dưới):
+      - Endpoint mới: `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`,
+        `PATCH /me`, `POST /me/password`, `GET /me/sessions`, `GET /me/bests`. Phiên đăng nhập bằng cookie
+        `httpOnly` (security scheme `cookieAuth`).
+      - `POST /sessions`: request có cookie đăng nhập hợp lệ → phiên gắn với tài khoản. Thêm 403 `FORBIDDEN`
+        (kiểm `Origin`, CSRF).
+      - `POST /sessions/{sessionId}/score`: `playerName` không còn bắt buộc khi request đã đăng nhập (nới
+        request — tương thích ngược); phiên của tài khoản chỉ nộp được bởi đúng tài khoản đó; khách dùng tên
+        trùng tên hiển thị của một tài khoản → 409 `NAME_TAKEN` (phiên vẫn `active`); thêm 403 `FORBIDDEN`.
+      - `GET /games/{gameId}/leaderboard`: gộp "một người một dòng" theo tài khoản cho người có tài khoản
+        (theo tên cho khách); `LeaderboardEntry` thêm field bắt buộc `isMember` (thêm field response —
+        tương thích ngược); `playerName` của thành viên là tên hiển thị **hiện tại** của tài khoản.
+      - Body tối đa 4 KiB cho `/auth/*` và `/me*` (vẫn 1 KiB cho endpoint khác).
+      - `Error.code` thêm `FORBIDDEN`, `INVALID_CREDENTIALS`, `EMAIL_TAKEN`, `NAME_TAKEN`; `UNAUTHORIZED`
+        mở rộng nghĩa (chưa đăng nhập).
+    - 0.4.0 (minor trước 1.0, **BREAKING** so với phác thảo 0.3.0 của `/sessions`,
+      `/sessions/{sessionId}/score`, `/games/{gameId}/leaderboard` — các endpoint này chưa từng được
+      hiện thực nên không có client nào bị ảnh hưởng; `GET /games`, `GET /games/{gameId}` chỉ thêm
+      field, tương thích ngược):
+      - `Game` thêm `ranked` (bắt buộc) và `scoreOrder` (chỉ có khi `ranked = true`).
+      - `POST /sessions`: response 201 đổi thành `SessionCreated` `{ session, sessionToken }` (BREAKING);
+        thêm 400/404/422/429/500.
+      - `POST /sessions/{sessionId}/score`: bắt buộc header `X-Session-Token`; body thêm `playerName`
+        (bắt buộc), `score` có trần; response 200 đổi thành `ScoreResult` (BREAKING); thêm
+        401/404/409/413/415/422/429/500; nộp lại cùng dữ liệu là idempotent.
+      - `GET /games/{gameId}/leaderboard`: response đổi từ mảng sang `LeaderboardResponse` (BREAKING);
+        `LeaderboardEntry` thêm `durationMs`, `achievedAt`; thêm 400/404/422/429/500.
+      - `Session`: `id` là UUID; thêm `expiresAt`, `durationMs`, `playerName`; mọi field đều bắt buộc
+        (giá trị có thể `null`) (BREAKING).
+      - `Error.code` thêm `UNAUTHORIZED`, `SESSION_EXPIRED`, `PAYLOAD_TOO_LARGE`,
+        `UNSUPPORTED_MEDIA_TYPE`, `GAME_NOT_RANKED`, `SCORE_REJECTED`, `RATE_LIMITED`, `BAD_REQUEST`.
+        Lỗi 4xx của framework giữ đúng status (không còn bị gộp thành 400).
+    - 0.3.0 (minor, không phá vỡ tương thích): đặc tả chi tiết `GET /games/{gameId}` (ràng buộc
+      `gameId`, id sai định dạng → 404 `NOT_FOUND`, thêm response 500); làm rõ `embedUrl` là trang
+      game tuân theo `docs/game-protocol.md` v1; cập nhật ví dụ theo catalog 5 game (F2).
+    - 0.2.0 (minor, không phá vỡ tương thích): `GET /games` thêm `page`, `limit` trong response,
+      giới hạn `page` tối đa 10000, quy định sắp xếp và hành vi trang vượt quá, thêm response 400/500;
+      `Game` thêm field bắt buộc `createdAt`, ràng buộc `id`; liệt kê danh mục `Error.code`;
+      thêm response dùng chung `InternalError`.
+    - 0.1.0: bản nháp ban đầu.
+
+    Quy tắc chung cho endpoint ghi (`POST`, `PATCH`):
+    - Body phải là JSON (`Content-Type: application/json`), tối đa 1 KiB (riêng `/auth/*`, `/me*`: 4 KiB).
+      Content-Type khác → 415 `UNSUPPORTED_MEDIA_TYPE`; body quá lớn → 413 `PAYLOAD_TOO_LARGE`; JSON
+      hỏng/rỗng → 400 `VALIDATION_ERROR` (ngoại lệ: `POST /auth/logout` không cần body).
+    - Kiểu dữ liệu được kiểm **chặt**, không tự ép kiểu (`"12"`, `12.0` dạng chuỗi, `1e1` dạng chuỗi,
+      `true` đều bị từ chối khi cần số nguyên). Field không xác định bị bỏ qua.
+    - Rate limit theo IP client (xem `RateLimited`); khi vượt → 429 `RATE_LIMITED` kèm header
+      `Retry-After` (giây). Rate limit được kiểm **trước** mọi validate khác.
+    - Chống CSRF (ADR-024), kiểm ngay **sau** rate limit: header `Origin` phải bằng đúng origin của web
+      (`WEB_ORIGIN`). Áp dụng bắt buộc cho mọi `POST`/`PATCH` dưới `/auth/*` và `/me*` (thiếu hoặc sai →
+      403 `FORBIDDEN`). Với `POST /sessions` và `POST /sessions/{sessionId}/score`: `Origin` có mặt mà sai →
+      403; thiếu `Origin` → 403 chỉ khi request mang cookie phiên đăng nhập (khách không có cookie vẫn gọi
+      được như trước).
+
+    Đăng nhập (Giai đoạn 3, ADR-023):
+    - Phiên đăng nhập là cookie `httpOnly` (xem security scheme `cookieAuth`), do server đặt qua
+      `Set-Cookie`; client không đọc/ghi được, không bao giờ nằm trong body/URL. Client gọi API cùng origin
+      (`fetch` mặc định `credentials: 'same-origin'`).
+    - Cookie thiếu, sai định dạng, không khớp phiên nào hoặc phiên đã hết hạn ⇒ request được coi là
+      **khách** (endpoint công khai) hoặc 401 `UNAUTHORIZED` (endpoint yêu cầu đăng nhập).
+    - Mọi response của `/auth/*` và `/me*` có `Cache-Control: no-store`.
+
+    Header bảo mật (0.5.1, ADR-032) — áp dụng cho **mọi** response của API, kể cả lỗi 4xx/5xx và 404:
+    - `X-Content-Type-Options: nosniff`
+    - `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`
+    - `Cross-Origin-Resource-Policy: same-origin`
+    - `Referrer-Policy: no-referrer`
+    - `Cache-Control: no-store` trừ khi endpoint quy định khác (hiện không endpoint nào quy định khác).
+    - Production: reverse proxy thêm `Strict-Transport-Security`. API không bật CORS.
+servers:
+  - url: http://localhost:3000/api
+    description: Local (FE gọi qua đường dẫn tương đối `/api` — Vite proxy ở dev)
+  - url: https://{webDomain}/api
+    description: Production — cùng origin với web; Caddy reverse proxy `/api/*` tới API (ADR-031)
+    variables:
+      webDomain:
+        default: example.com
+        description: Giá trị `WEB_DOMAIN` của bản deploy
+
+paths:
+  /games:
+    get:
+      summary: Danh sách game (phân trang offset, mới nhất trước)
+      description: |
+        - Sắp xếp: `createdAt` giảm dần (mới nhất trước), tie-breaker `id` tăng dần (thứ tự ổn định,
+          không lặp/mất phần tử giữa các trang khi dữ liệu không đổi).
+        - Phân trang: `offset = (page - 1) * limit`.
+        - `page` vượt quá số trang hiện có → 200 với `items: []`; `total`, `page`, `limit` vẫn đúng
+          (`page`, `limit` phản ánh giá trị đã áp dụng, kể cả default).
+        - `page`/`limit` không hợp lệ (không phải số nguyên, < 1, `page` > 10000, `limit` > 100,
+          rỗng, hoặc truyền lặp nhiều lần) → 400 `VALIDATION_ERROR`; server không tự kẹp giá trị.
+        - Query param không xác định bị bỏ qua.
+        - Tổng số trang phía client: `max(1, ceil(total / limit))`.
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 10000, default: 1 }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GameListResponse' }
+              examples:
+                firstPage:
+                  summary: Trang 1, limit 2, có 5 game
+                  value:
+                    items:
+                      - id: tic-tac-toe
+                        title: Tic Tac Toe
+                        description: Hai người chơi luân phiên đặt X và O; ai xếp đủ ba ô liên tiếp trước sẽ thắng.
+                        thumbnailUrl: http://localhost:5173/thumbnails/tic-tac-toe.svg
+                        embedUrl: http://localhost:5174/games/tic-tac-toe/
+                        orientation: any
+                        tags: [classic, board]
+                        createdAt: '2026-01-13T00:00:00.000Z'
+                        ranked: false
+                      - id: merge-2048
+                        title: Merge 2048
+                        description: Dùng phím mũi tên trượt và gộp các ô số để đạt 2048.
+                        thumbnailUrl: http://localhost:5173/thumbnails/merge-2048.svg
+                        embedUrl: http://localhost:5174/games/merge-2048/
+                        orientation: any
+                        tags: [puzzle, numbers]
+                        createdAt: '2026-01-07T00:00:00.000Z'
+                        ranked: true
+                        scoreOrder: desc
+                    total: 5
+                    page: 1
+                    limit: 2
+                beyondLastPage:
+                  summary: Trang vượt quá
+                  value: { items: [], total: 5, page: 99, limit: 20 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /games/{gameId}:
+    get:
+      summary: Chi tiết game
+      description: |
+        - Trả đúng object `Game` như một phần tử của `GET /games` (cùng cách dựng `thumbnailUrl`,
+          `embedUrl`; `description` bị bỏ nếu không có).
+        - `gameId` so khớp chính xác (phân biệt hoa thường, không chuẩn hoá, không bỏ dấu `/` cuối).
+        - `gameId` không khớp pattern slug (rỗng, chữ hoa, dài hơn 64 ký tự, chứa `/` đã mã hoá `%2F`,
+          `.`, `..`, ký tự đặc biệt…) → 404 `NOT_FOUND`, server **không** truy vấn DB. Lý do: id sai
+          định dạng chắc chắn không tồn tại; client chỉ cần xử lý một trường hợp "không có game".
+        - Slug hợp lệ nhưng không có trong catalog → 404 `NOT_FOUND`.
+        - Query param bị bỏ qua.
+      parameters:
+        - $ref: '#/components/parameters/GameId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Game' }
+              examples:
+                snake:
+                  value:
+                    id: snake
+                    title: Snake
+                    description: Dùng phím mũi tên điều khiển con rắn ăn mồi, tránh đụng tường và thân mình.
+                    thumbnailUrl: http://localhost:5173/thumbnails/snake.svg
+                    embedUrl: http://localhost:5174/games/snake/
+                    orientation: any
+                    tags: [arcade, classic]
+                    createdAt: '2026-01-01T00:00:00.000Z'
+                    ranked: true
+                    scoreOrder: desc
+        '404':
+          description: Không có game với id này, hoặc id sai định dạng (`code` = `NOT_FOUND`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                notFound:
+                  value: { code: NOT_FOUND, message: Game not found }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /games/{gameId}/leaderboard:
+    get:
+      summary: Bảng xếp hạng của game (thành tích tốt nhất của mỗi người chơi)
+      description: |
+        - Chỉ tính các lượt nộp được **chấp nhận** (`SCORE_REJECTED` không được tính) và không bị ẩn
+          bởi quản trị.
+        - "Một người một dòng" (ADR-026): lượt của **tài khoản** gộp theo tài khoản (`isMember: true`,
+          `playerName` = tên hiển thị hiện tại của tài khoản, kể cả khi lượt được nộp trước khi đổi tên);
+          lượt của **khách** gộp theo tên (so khớp không phân biệt hoa thường, sau chuẩn hoá NFC)
+          (`isMember: false`). Lượt khách cũ trùng tên với một tài khoản đăng ký sau **không** gộp vào tài
+          khoản đó (có thể thấy hai dòng cùng tên, phân biệt bằng `isMember`).
+        - Thứ tự: `score` theo `scoreOrder` của game (`desc`: cao trước; `asc`: thấp trước), rồi
+          `durationMs` tăng dần, rồi `achievedAt` tăng dần (nộp sớm hơn đứng trên). `rank` là số thứ tự
+          1, 2, 3… liên tục (không có hạng đồng hạng).
+        - `gameId` sai định dạng hoặc không tồn tại → 404 `NOT_FOUND`; game tồn tại nhưng không xếp hạng
+          (`ranked = false`) → 422 `GAME_NOT_RANKED`.
+        - `limit` không hợp lệ (quy tắc giống `GET /games`) → 400 `VALIDATION_ERROR`.
+        - Chưa có lượt nào → 200 với `items: []`.
+      parameters:
+        - $ref: '#/components/parameters/GameId'
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 10 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LeaderboardResponse' }
+              examples:
+                memory:
+                  value:
+                    gameId: memory-match
+                    scoreOrder: asc
+                    items:
+                      - { rank: 1, playerName: Lan, isMember: true, score: 11, durationMs: 21450, achievedAt: '2026-10-24T08:00:00.000Z' }
+                      - { rank: 2, playerName: Minh_2, isMember: false, score: 11, durationMs: 30010, achievedAt: '2026-10-24T07:00:00.000Z' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/GameNotRanked' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /sessions:
+    post:
+      summary: Bắt đầu phiên chơi (một ván) cho game có xếp hạng
+      description: |
+        - Host (trang web) gọi khi game báo `ready` (mỗi ván một phiên). Game không bao giờ gọi API.
+        - Server ghi `startedAt` bằng đồng hồ server, `expiresAt = startedAt + 2 giờ`.
+        - Trả `sessionToken` (ngẫu nhiên 256 bit, base64url 43 ký tự) **đúng một lần**; server chỉ lưu
+          hash SHA-256 của token. Client giữ token trong bộ nhớ (không lưu storage, không đưa vào URL,
+          không truyền vào game) và gửi lại ở header `X-Session-Token` khi nộp điểm.
+        - `gameId` thiếu hoặc không phải chuỗi → 400 `VALIDATION_ERROR`; chuỗi sai định dạng slug hoặc
+          không tồn tại → 404 `NOT_FOUND`; game không xếp hạng → 422 `GAME_NOT_RANKED`.
+        - Rate limit: 60 yêu cầu / phút / IP. Sau đó kiểm `Origin` (403 `FORBIDDEN`, xem quy tắc chung).
+        - (0.5.0) Request có cookie đăng nhập hợp lệ → phiên thuộc tài khoản đó (chỉ tài khoản đó nộp điểm
+          được). Không có cookie hoặc cookie không hợp lệ/hết hạn → phiên khách (như cũ, không lỗi).
+          Response không đổi (không lộ id tài khoản).
+      security:
+        - {}
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [gameId]
+              properties:
+                gameId: { type: string }
+            examples:
+              snake: { value: { gameId: snake } }
+      responses:
+        '201':
+          description: Đã tạo phiên
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionCreated' }
+              examples:
+                created:
+                  value:
+                    session:
+                      id: 3f0c6a52-6a43-4b8e-9f62-0a3f7b2d9c11
+                      gameId: snake
+                      status: active
+                      startedAt: '2026-10-24T08:00:00.000Z'
+                      expiresAt: '2026-10-24T10:00:00.000Z'
+                      endedAt: null
+                      score: null
+                      durationMs: null
+                      playerName: null
+                    sessionToken: Zk3x9QhB0m7rT2sV8yLw4cN1pE6uJ5aD0gH3iK7oM2q
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/GameNotRanked' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /sessions/{sessionId}/score:
+    post:
+      summary: Nộp điểm cuối của phiên (một lần, có xác minh phía server)
+      description: |
+        Danh tính của request (0.5.0, ADR-027): **tài khoản** nếu có cookie đăng nhập hợp lệ, ngược lại
+        **khách**. Cookie không hợp lệ/hết hạn ⇒ khách (không lỗi).
+
+        Thứ tự kiểm tra (dừng ở lỗi đầu tiên):
+        1. Rate limit (60 / phút / IP) → 429 `RATE_LIMITED`.
+        2. `Origin` (quy tắc chung, chỉ bắt buộc khi có cookie đăng nhập) → 403 `FORBIDDEN`.
+        3. `sessionId` không phải UUID dạng chữ thường → 404 `NOT_FOUND` (không truy vấn DB).
+        4. Header `X-Session-Token` thiếu hoặc sai định dạng (`^[A-Za-z0-9_-]{43}$`) → 401 `UNAUTHORIZED`.
+           Token vẫn **bắt buộc** cả khi đã đăng nhập.
+        5. Body không hợp lệ → 400 `VALIDATION_ERROR`: `score` không phải số nguyên an toàn trong
+           0..1000000000; với **khách**: `playerName` thiếu hoặc sai quy tắc ở schema `ScoreSubmission`.
+           Với **tài khoản**: `playerName` bị bỏ qua hoàn toàn (không kiểm, không dùng).
+        6. Không có phiên với id này **hoặc** token không khớp (kể cả phiên của người khác) **hoặc** phiên
+           thuộc một tài khoản khác với danh tính của request (kể cả khi request là khách) → 404
+           `NOT_FOUND` (các trường hợp không phân biệt được).
+        7. Phiên đã kết thúc:
+           - nếu `score` **và** danh tính trùng lần nộp đã ghi (tài khoản: cùng tài khoản; khách: cùng
+             `playerName` sau chuẩn hoá) → trả lại đúng kết quả cũ (200 `ScoreResult` nếu đã được chấp nhận,
+             422 `SCORE_REJECTED` nếu đã bị từ chối) — cho phép client retry an toàn khi lỗi mạng;
+           - ngược lại → 409 `SESSION_NOT_ACTIVE`.
+        8. Phiên quá `expiresAt` → 409 `SESSION_EXPIRED` (phiên không đổi trạng thái).
+        9. Khách dùng `playerName` trùng (không phân biệt hoa thường) tên hiển thị của một tài khoản → 409
+           `NAME_TAKEN`; phiên **vẫn `active`**, client có thể nộp lại với tên khác (hoặc sau khi đăng nhập).
+        10. Xác minh theo luật của game với `durationMs = thời điểm server nhận − startedAt` (không dùng
+            thời gian client): điểm trong `[minScore, maxScore]`, thời lượng tối thiểu, tốc độ ghi điểm
+            tối đa… (luật không công khai qua API). Không đạt → phiên vẫn bị **kết thúc** (ghi
+            `result = rejected`), trả 422 `SCORE_REJECTED` với message chung (không nêu luật nào bị vi phạm).
+        11. Đạt → phiên `finished`, trả 200 `ScoreResult`. Với tài khoản: `session.playerName` = tên hiển
+            thị hiện tại của tài khoản. Phiên khách (tạo khi chưa đăng nhập) được nộp bởi request đã đăng
+            nhập → phiên được gắn vào tài khoản đó (người giữ token là người tạo phiên).
+
+        Bước 10–11 là một cập nhật atomic `... WHERE status = 'active' AND (user_id IS NULL OR user_id = $user)`:
+        khi hai yêu cầu đồng thời, đúng một yêu cầu ghi được; yêu cầu còn lại đi theo bước 7. Mọi lần nộp bị
+        từ chối (401/403/404/409/422/429) đều được ghi log phía server (không ghi token, IP, tên người chơi,
+        email).
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: X-Session-Token
+          in: header
+          required: true
+          description: Token nhận được từ `POST /sessions` (không bao giờ đặt trong URL).
+          schema: { type: string, pattern: '^[A-Za-z0-9_-]{43}$' }
+      security:
+        - {}
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScoreSubmission' }
+            examples:
+              guest: { value: { score: 17, playerName: Lan } }
+              member: { summary: Đã đăng nhập (không cần playerName), value: { score: 17 } }
+      responses:
+        '200':
+          description: Đã ghi nhận (hoặc nộp lại trùng dữ liệu của một lần đã được chấp nhận)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScoreResult' }
+              examples:
+                accepted:
+                  value:
+                    session:
+                      id: 3f0c6a52-6a43-4b8e-9f62-0a3f7b2d9c11
+                      gameId: snake
+                      status: finished
+                      startedAt: '2026-10-24T08:00:00.000Z'
+                      expiresAt: '2026-10-24T10:00:00.000Z'
+                      endedAt: '2026-10-24T08:01:30.000Z'
+                      score: 17
+                      durationMs: 90000
+                      playerName: Lan
+                    rank: 3
+                    personalBest: true
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401':
+          description: Thiếu hoặc sai định dạng `X-Session-Token` (`code` = `UNAUTHORIZED`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: |
+            Phiên đã kết thúc với dữ liệu khác (`SESSION_NOT_ACTIVE`), đã hết hạn (`SESSION_EXPIRED`), hoặc
+            khách dùng tên của một tài khoản (`NAME_TAKEN`, phiên vẫn `active`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                notActive: { value: { code: SESSION_NOT_ACTIVE, message: Session is no longer active } }
+                expired: { value: { code: SESSION_EXPIRED, message: Session has expired } }
+                nameTaken: { value: { code: NAME_TAKEN, message: This name belongs to a registered player } }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422':
+          description: Điểm không vượt qua xác minh (`code` = `SCORE_REJECTED`); phiên đã bị kết thúc
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                rejected: { value: { code: SCORE_REJECTED, message: Score was not accepted } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /auth/register:
+    post:
+      summary: Đăng ký tài khoản (email + mật khẩu) và đăng nhập luôn
+      description: |
+        Thứ tự kiểm tra: rate limit `authRegister` (10 / 10 phút / IP) → `Origin` (403 `FORBIDDEN`) →
+        Content-Type / kích thước / JSON → body (400 `VALIDATION_ERROR`) → email đã đăng ký (409
+        `EMAIL_TAKEN`) → tên hiển thị đã thuộc tài khoản khác (409 `NAME_TAKEN`) → tạo tài khoản + phiên
+        đăng nhập.
+        - `email`, `password`, `displayName`: quy tắc ở schema `RegisterRequest`. Không xác minh email
+          (ngoài phạm vi).
+        - Thành công: 201 `AuthResponse` + `Set-Cookie` phiên đăng nhập mới (`cookieAuth`). Nếu request mang
+          sẵn cookie phiên đăng nhập, phiên cũ bị xoá phía server; token mới luôn được sinh mới (chống session
+          fixation).
+        - `EMAIL_TAKEN` cho biết email đã được đăng ký — chấp nhận rủi ro dò tài khoản ở mức này, giới hạn
+          bằng rate limit (ADR-025). Đăng nhập thì không lộ (luôn `INVALID_CREDENTIALS`).
+        - Tên hiển thị từng được **khách** dùng trên leaderboard vẫn đăng ký được (lượt khách cũ không bị
+          gộp vào tài khoản).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+            examples:
+              ok: { value: { email: lan@example.com, password: 'mat-khau-dai-9', displayName: Lan } }
+      responses:
+        '201':
+          description: Đã tạo tài khoản và đăng nhập
+          headers:
+            Set-Cookie:
+              description: Cookie phiên đăng nhập (xem `cookieAuth`).
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: Email đã đăng ký (`EMAIL_TAKEN`) hoặc tên hiển thị đã thuộc tài khoản khác (`NAME_TAKEN`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                emailTaken: { value: { code: EMAIL_TAKEN, message: Email is already registered } }
+                nameTaken: { value: { code: NAME_TAKEN, message: Display name is already taken } }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /auth/login:
+    post:
+      summary: Đăng nhập bằng email + mật khẩu
+      description: |
+        Thứ tự kiểm tra: rate limit `authLogin` (30 / 5 phút / IP) → `Origin` (403) → Content-Type /
+        kích thước / JSON → body (400: `email` phải là chuỗi đúng định dạng của `RegisterRequest.email`,
+        `password` là chuỗi 1–128 ký tự) → rate limit theo tài khoản `authLoginAccount` (10 lần thử / 15 phút /
+        email đã chuẩn hoá, tính cả email không tồn tại) → 429 → kiểm mật khẩu.
+        - Email không tồn tại **hoặc** mật khẩu sai → cùng 401 `INVALID_CREDENTIALS`, cùng message; server
+          vẫn chạy hàm băm với hash giả khi email không tồn tại để thời gian phản hồi tương đương.
+        - Thành công: 200 `AuthResponse` + `Set-Cookie` phiên mới (token luôn mới; cookie cũ trong request,
+          nếu hợp lệ, bị xoá phía server — chống session fixation).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Đăng nhập thành công
+          headers:
+            Set-Cookie:
+              description: Cookie phiên đăng nhập (xem `cookieAuth`).
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401':
+          description: Sai email hoặc mật khẩu (`code` = `INVALID_CREDENTIALS`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                invalid: { value: { code: INVALID_CREDENTIALS, message: Invalid email or password } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /auth/logout:
+    post:
+      summary: Đăng xuất (xoá phiên đăng nhập hiện tại phía server)
+      description: |
+        - `Origin` bắt buộc (403 `FORBIDDEN`). Không cần body (body JSON nếu có bị bỏ qua; vẫn áp dụng giới
+          hạn kích thước/Content-Type khi có body). Không rate limit.
+        - Có cookie khớp phiên → xoá dòng phiên trong DB. Luôn trả 204 kèm `Set-Cookie` xoá cookie
+          (`Max-Age=0`), kể cả khi không có cookie / cookie không hợp lệ (idempotent).
+        - Sau đăng xuất, mọi request dùng lại giá trị cookie cũ được coi là khách / 401.
+      security:
+        - {}
+        - cookieAuth: []
+      responses:
+        '204':
+          description: Đã đăng xuất
+          headers:
+            Set-Cookie:
+              description: Xoá cookie phiên (`Max-Age=0`, cùng `Path`/thuộc tính).
+              schema: { type: string }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /auth/me:
+    get:
+      summary: Trạng thái đăng nhập hiện tại
+      description: |
+        - Luôn 200: `{ user: User }` khi cookie hợp lệ; `{ user: null }` khi không có cookie (không truy vấn
+          DB), cookie sai định dạng / không khớp / hết hạn (kèm `Set-Cookie` xoá cookie).
+        - Không rate limit. Frontend gọi một lần khi tải ứng dụng.
+      security:
+        - {}
+        - cookieAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthState' }
+              examples:
+                signedIn:
+                  value:
+                    user: { id: 9b2e4c1a-0d7f-4f43-8f0e-2a6c5b1d3e77, email: lan@example.com, displayName: Lan, createdAt: '2026-10-24T08:00:00.000Z' }
+                guest: { value: { user: null } }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /me:
+    patch:
+      summary: Đổi tên hiển thị
+      description: |
+        Thứ tự: rate limit `accountWrite` (20 / 15 phút / IP) → `Origin` (403) → đăng nhập (401
+        `UNAUTHORIZED`) → body (400) → tên đã thuộc tài khoản **khác** (409 `NAME_TAKEN`; đổi hoa/thường tên
+        của chính mình được phép) → 200 `AuthResponse`.
+        - Quy tắc tên giống `RegisterRequest.displayName`. Lượt chơi cũ giữ `playerName` lúc nộp (lịch sử),
+          còn leaderboard hiển thị tên hiện tại.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateProfileRequest' }
+      responses:
+        '200':
+          description: Đã cập nhật
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: Tên hiển thị đã thuộc tài khoản khác (`NAME_TAKEN`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /me/password:
+    post:
+      summary: Đổi mật khẩu (cần mật khẩu hiện tại); đăng xuất mọi phiên khác
+      description: |
+        Thứ tự: rate limit `accountWrite` → `Origin` (403) → đăng nhập (401 `UNAUTHORIZED`) → body (400;
+        `newPassword` theo quy tắc `RegisterRequest.password`) → `currentPassword` sai → 403
+        `INVALID_CREDENTIALS` (không đăng xuất) → cập nhật hash.
+        - Thành công: **mọi** phiên đăng nhập của tài khoản bị xoá (kể cả phiên hiện tại), một phiên mới được
+          cấp cho request này qua `Set-Cookie` → 204. Thiết bị khác phải đăng nhập lại.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
+      responses:
+        '204':
+          description: Đã đổi mật khẩu
+          headers:
+            Set-Cookie:
+              description: Cookie phiên đăng nhập mới.
+              schema: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: |
+            `Origin` sai/thiếu (`FORBIDDEN`) hoặc mật khẩu hiện tại không đúng (`INVALID_CREDENTIALS`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                wrongPassword: { value: { code: INVALID_CREDENTIALS, message: Current password is incorrect } }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /me/sessions:
+    get:
+      summary: Lịch sử chơi của chính người dùng (các lượt đã nộp, mới nhất trước)
+      description: |
+        - Rate limit `accountRead` (120 / phút / IP) → đăng nhập (401 `UNAUTHORIZED`) → query.
+        - Chỉ các phiên `finished` gắn với tài khoản hiện tại (cả `accepted` lẫn `rejected`; không có lý do
+          từ chối). Phiên bỏ dở/`active` không xuất hiện. Không có tham số chọn người dùng khác.
+        - Sắp xếp `endedAt` giảm dần, tie-breaker `sessionId` giảm dần. Phân trang offset như `GET /games`
+          (`page` 1..10000 mặc định 1; `limit` 1..50 mặc định 20; sai → 400; trang vượt quá → `items: []`).
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 10000, default: 1 }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlayHistoryResponse' }
+              examples:
+                page1:
+                  value:
+                    items:
+                      - { sessionId: 3f0c6a52-6a43-4b8e-9f62-0a3f7b2d9c11, gameId: snake, gameTitle: Snake, scoreOrder: desc, score: 17, durationMs: 90000, result: accepted, endedAt: '2026-10-24T08:01:30.000Z' }
+                    total: 1
+                    page: 1
+                    limit: 20
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /me/bests:
+    get:
+      summary: Kỷ lục cá nhân theo từng game
+      description: |
+        - Rate limit `accountRead` → đăng nhập (401 `UNAUTHORIZED`).
+        - Mỗi game xếp hạng mà tài khoản có ít nhất một lượt `accepted` (không bị ẩn) → một mục với thành
+          tích tốt nhất (cùng quy tắc so sánh với leaderboard). Sắp xếp `achievedAt` giảm dần, rồi `gameId`.
+        - `plays` = số lượt đã nộp (`finished`, cả accepted lẫn rejected) của tài khoản cho game đó.
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PersonalBestsResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: __Host-qp_sid
+      description: |
+        Phiên đăng nhập (ADR-023). Tên cookie `__Host-qp_sid` khi `COOKIE_SECURE` bật (production, HTTPS);
+        `qp_sid` khi tắt (dev HTTP). Giá trị: 32 byte ngẫu nhiên base64url (43 ký tự), server chỉ lưu
+        SHA-256. Thuộc tính: `HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000` (+ `Secure` khi bật), không
+        `Domain`. Hết hạn cố định 30 ngày kể từ lúc đăng nhập (không trượt).
+  parameters:
+    GameId:
+      name: gameId
+      in: path
+      required: true
+      schema: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,63}$' }
+  schemas:
+    Game:
+      type: object
+      required: [id, title, thumbnailUrl, embedUrl, orientation, tags, createdAt, ranked]
+      properties:
+        id:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9-]{0,63}$'
+          description: Slug định danh game (ổn định, dùng trong URL).
+        title: { type: string, minLength: 1, maxLength: 100 }
+        description:
+          type: string
+          maxLength: 500
+          description: Không có thì field bị bỏ khỏi object (không trả `null`).
+        thumbnailUrl:
+          type: string
+          format: uri
+          description: URL tuyệt đối (http/https) tới ảnh thumbnail, tỉ lệ 4:3.
+        embedUrl:
+          type: string
+          format: uri
+          description: |
+            URL tuyệt đối trên origin game riêng (`GAME_ORIGIN`, khác origin web); dùng làm `src`
+            của iframe sandbox ở trang chơi. Trang này nạp game SDK và giao tiếp với host theo
+            `docs/game-protocol.md` (phiên bản giao thức 1). Client phải kiểm tra origin của URL này
+            bằng đúng `GAME_ORIGIN` mà client tin cậy trước khi nhúng.
+        orientation: { type: string, enum: [landscape, portrait, any] }
+        tags: { type: array, items: { type: string } }
+        createdAt:
+          type: string
+          format: date-time
+          description: Thời điểm thêm vào catalog (ISO 8601, UTC). Dùng để sắp xếp "mới nhất trước".
+        ranked:
+          type: boolean
+          description: |
+            `true` nếu game có luật tính điểm phía server (tạo được phiên, nộp điểm, có leaderboard).
+            `false` → client không tạo phiên, không hiển thị leaderboard. Client cũ/thiếu field nên coi
+            như `false`.
+        scoreOrder:
+          type: string
+          enum: [desc, asc]
+          description: |
+            Chỉ có khi `ranked = true`. `desc`: điểm cao hơn tốt hơn; `asc`: điểm thấp hơn tốt hơn
+            (vd. `memory-match`: điểm là số lượt lật cặp thẻ).
+    GameListResponse:
+      type: object
+      required: [items, total, page, limit]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Game' } }
+        total: { type: integer, minimum: 0, description: Tổng số game (không phụ thuộc trang). }
+        page: { type: integer, minimum: 1, description: Trang đã áp dụng. }
+        limit: { type: integer, minimum: 1, maximum: 100, description: Kích thước trang đã áp dụng. }
+    Session:
+      type: object
+      description: |
+        Một phiên = một ván của một game có xếp hạng. Trạng thái chỉ đi một chiều `active` → `finished`.
+        Phiên `active` quá `expiresAt` không nhận điểm nữa (409 `SESSION_EXPIRED`) nhưng vẫn mang
+        `status: active` trong DB; API hiện không có endpoint đọc phiên nên client chỉ thấy `active`
+        (response 201) hoặc `finished` (response 200 của nộp điểm).
+      required: [id, gameId, status, startedAt, expiresAt, endedAt, score, durationMs, playerName]
+      properties:
+        id: { type: string, format: uuid }
+        gameId: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,63}$' }
+        status: { type: string, enum: [active, finished] }
+        startedAt: { type: string, format: date-time, description: Đồng hồ server. }
+        expiresAt: { type: string, format: date-time, description: '`startedAt` + 2 giờ.' }
+        endedAt: { type: [string, 'null'], format: date-time, description: Thời điểm server nhận điểm. }
+        score: { type: [integer, 'null'], minimum: 0, maximum: 1000000000 }
+        durationMs:
+          type: [integer, 'null']
+          minimum: 0
+          description: '`endedAt − startedAt` (mili giây), do server tính.'
+        playerName: { type: [string, 'null'], minLength: 1, maxLength: 20 }
+    SessionCreated:
+      type: object
+      required: [session, sessionToken]
+      properties:
+        session: { $ref: '#/components/schemas/Session' }
+        sessionToken:
+          type: string
+          pattern: '^[A-Za-z0-9_-]{43}$'
+          description: Chỉ trả một lần. Bí mật của client; gửi lại qua header `X-Session-Token`.
+    ScoreSubmission:
+      type: object
+      description: |
+        `playerName` bắt buộc với khách; bị bỏ qua (không kiểm) khi request đã đăng nhập — tên dùng là tên
+        hiển thị của tài khoản (0.5.0).
+      required: [score]
+      properties:
+        score:
+          type: integer
+          minimum: 0
+          maximum: 1000000000
+          description: |
+            Điểm cuối do game báo (`gameOver.score` theo `docs/game-protocol.md`). Phải là number JSON
+            nguyên (không nhận chuỗi). Ý nghĩa theo game: snake = số mồi, merge-2048 = tổng giá trị ô đã
+            gộp, brick-breaker = số gạch phá trong một lượt bóng, memory-match = số lượt lật cặp thẻ.
+        playerName:
+          type: string
+          description: |
+            Tên hiển thị trên leaderboard (khách). Server: bỏ khoảng trắng đầu/cuối, chuẩn hoá NFC, gộp
+            chuỗi khoảng trắng liên tiếp thành một dấu cách, rồi kiểm: 1–20 ký tự (code point); chỉ gồm chữ
+            (`\p{L}`), dấu kết hợp (`\p{M}`), số (`\p{N}`), dấu cách, `_`, `-`, `.`; ký tự đầu là chữ hoặc
+            số. Ký tự điều khiển, ký tự định hướng (bidi), zero-width… đều bị từ chối (400). Giá trị
+            đã chuẩn hoá là giá trị được lưu và trả về. Trùng (không phân biệt hoa thường) tên hiển thị của
+            một tài khoản → 409 `NAME_TAKEN`.
+    ScoreResult:
+      type: object
+      required: [session, rank, personalBest]
+      properties:
+        session: { $ref: '#/components/schemas/Session' }
+        rank:
+          type: integer
+          minimum: 1
+          description: |
+            Hạng của lượt này nếu đặt vào leaderboard = 1 + số người chơi **khác** (tài khoản khác hoặc tên
+            khách khác — khoá gộp ADR-026) có thành tích tốt nhất xếp trên lượt này (cùng quy tắc sắp xếp
+            với leaderboard). Bằng hạng hiển thị trên leaderboard khi `personalBest = true`.
+        personalBest:
+          type: boolean
+          description: |
+            `true` nếu lượt này là thành tích tốt nhất hiện tại của người chơi (tài khoản, hoặc tên khách).
+    LeaderboardResponse:
+      type: object
+      required: [gameId, scoreOrder, items]
+      properties:
+        gameId: { type: string }
+        scoreOrder: { type: string, enum: [desc, asc] }
+        items: { type: array, items: { $ref: '#/components/schemas/LeaderboardEntry' } }
+    LeaderboardEntry:
+      type: object
+      required: [rank, playerName, isMember, score, durationMs, achievedAt]
+      properties:
+        rank: { type: integer, minimum: 1 }
+        playerName:
+          type: string
+          description: |
+            Do người dùng nhập — client phải hiển thị dạng văn bản thuần (không HTML). Thành viên: tên hiển
+            thị hiện tại của tài khoản.
+        isMember:
+          type: boolean
+          description: |
+            `true` nếu dòng này là thành tích của một tài khoản (tên được bảo đảm duy nhất, khách không dùng
+            được); `false` nếu là tên khách tự nhập. Client nên hiển thị dấu phân biệt cho thành viên.
+        score: { type: integer, minimum: 0 }
+        durationMs: { type: integer, minimum: 0 }
+        achievedAt: { type: string, format: date-time, description: '`endedAt` của lượt đó.' }
+    User:
+      type: object
+      description: Tài khoản của chính người đang đăng nhập (không bao giờ trả thông tin tài khoản khác).
+      required: [id, email, displayName, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, maxLength: 254, description: Đã chuẩn hoá (chữ thường). }
+        displayName: { type: string, minLength: 1, maxLength: 20 }
+        createdAt: { type: string, format: date-time }
+    AuthResponse:
+      type: object
+      required: [user]
+      properties:
+        user: { $ref: '#/components/schemas/User' }
+    AuthState:
+      type: object
+      required: [user]
+      properties:
+        user:
+          oneOf:
+            - { $ref: '#/components/schemas/User' }
+            - { type: 'null' }
+    RegisterRequest:
+      type: object
+      required: [email, password, displayName]
+      properties:
+        email:
+          type: string
+          description: |
+            Server: bỏ khoảng trắng đầu/cuối, đổi chữ thường, rồi kiểm: ≤ 254 ký tự, chỉ ASCII, khớp
+            `^[a-z0-9._%+-]{1,64}@[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})+$`. Sai → 400. Email đã chuẩn hoá là
+            khoá duy nhất của tài khoản.
+        password:
+          type: string
+          description: |
+            Chuẩn hoá NFC (không trim), rồi 8–128 ký tự (code point). Không có quy tắc thành phần ký tự.
+            Không bao giờ được trả về, ghi log hay lưu dạng rõ.
+        displayName:
+          type: string
+          description: |
+            Cùng chuẩn hoá và quy tắc với `ScoreSubmission.playerName` (1–20 ký tự…). Duy nhất (không phân
+            biệt hoa thường) giữa các tài khoản → trùng thì 409 `NAME_TAKEN`.
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, description: Chuẩn hoá như `RegisterRequest.email` trước khi tra cứu. }
+        password: { type: string, description: Chuẩn hoá NFC; độ dài ngoài 1–128 → 400. }
+    UpdateProfileRequest:
+      type: object
+      required: [displayName]
+      properties:
+        displayName: { type: string, description: Quy tắc như `RegisterRequest.displayName`. }
+    ChangePasswordRequest:
+      type: object
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword: { type: string, description: Độ dài ngoài 1–128 → 400. }
+        newPassword: { type: string, description: Quy tắc như `RegisterRequest.password`. }
+    PlayHistoryItem:
+      type: object
+      required: [sessionId, gameId, gameTitle, scoreOrder, score, durationMs, result, endedAt]
+      properties:
+        sessionId: { type: string, format: uuid }
+        gameId: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,63}$' }
+        gameTitle: { type: string }
+        scoreOrder:
+          type: [string, 'null']
+          enum: [desc, asc, null]
+          description: '`null` nếu game hiện không còn xếp hạng.'
+        score: { type: integer, minimum: 0 }
+        durationMs: { type: integer, minimum: 0 }
+        result:
+          type: string
+          enum: [accepted, rejected]
+          description: '`rejected` = điểm không vượt qua xác minh (không nêu lý do).'
+        endedAt: { type: string, format: date-time }
+    PlayHistoryResponse:
+      type: object
+      required: [items, total, page, limit]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/PlayHistoryItem' } }
+        total: { type: integer, minimum: 0 }
+        page: { type: integer, minimum: 1 }
+        limit: { type: integer, minimum: 1, maximum: 50 }
+    PersonalBest:
+      type: object
+      required: [gameId, gameTitle, scoreOrder, score, durationMs, achievedAt, plays]
+      properties:
+        gameId: { type: string }
+        gameTitle: { type: string }
+        scoreOrder: { type: string, enum: [desc, asc] }
+        score: { type: integer, minimum: 0 }
+        durationMs: { type: integer, minimum: 0 }
+        achievedAt: { type: string, format: date-time }
+        plays: { type: integer, minimum: 1 }
+    PersonalBestsResponse:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/PersonalBest' } }
+    Error:
+      type: object
+      description: |
+        Định dạng lỗi duy nhất của API. `message` dành cho người đọc, không chứa chi tiết nội bộ.
+        Danh mục `code`:
+        - `VALIDATION_ERROR` (400): tham số path/query/body không hợp lệ, JSON hỏng hoặc rỗng.
+        - `BAD_REQUEST` (giữ status 4xx gốc): lỗi 4xx khác do framework phát sinh mà không thuộc mã nào
+          ở đây (dự phòng; không endpoint nào chủ động trả).
+        - `UNAUTHORIZED` (401): thiếu hoặc sai định dạng `X-Session-Token`; hoặc endpoint yêu cầu đăng
+          nhập (`/me*`) mà request không có phiên đăng nhập hợp lệ (chưa đăng nhập / hết hạn / đã đăng xuất).
+        - `INVALID_CREDENTIALS` (401 ở `POST /auth/login`: sai email hoặc mật khẩu, không phân biệt; 403 ở
+          `POST /me/password`: mật khẩu hiện tại sai).
+        - `FORBIDDEN` (403): header `Origin` thiếu/sai với request đổi trạng thái (chống CSRF).
+        - `NOT_FOUND` (404): tài nguyên hoặc route không tồn tại (kể cả `gameId`/`sessionId` sai định
+          dạng, phiên có token không khớp, và phiên thuộc tài khoản khác).
+        - `EMAIL_TAKEN` (409): email đã được đăng ký.
+        - `NAME_TAKEN` (409): tên hiển thị đã thuộc một tài khoản khác (đăng ký, đổi tên), hoặc khách nộp
+          điểm với tên của một tài khoản.
+        - `SESSION_NOT_ACTIVE` (409): phiên đã kết thúc / đã nộp điểm với dữ liệu khác.
+        - `SESSION_EXPIRED` (409): phiên quá hạn nộp điểm.
+        - `PAYLOAD_TOO_LARGE` (413): body vượt giới hạn.
+        - `UNSUPPORTED_MEDIA_TYPE` (415): Content-Type của body không phải `application/json`.
+        - `GAME_NOT_RANKED` (422): game không xếp hạng (không tạo phiên, không có leaderboard).
+        - `SCORE_REJECTED` (422): điểm không vượt qua xác minh phía server.
+        - `RATE_LIMITED` (429): vượt giới hạn tần suất; xem header `Retry-After`.
+        - `INTERNAL_ERROR` (500): lỗi không mong muốn phía server (chi tiết chỉ ghi log server).
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - VALIDATION_ERROR
+            - BAD_REQUEST
+            - UNAUTHORIZED
+            - INVALID_CREDENTIALS
+            - FORBIDDEN
+            - NOT_FOUND
+            - EMAIL_TAKEN
+            - NAME_TAKEN
+            - SESSION_NOT_ACTIVE
+            - SESSION_EXPIRED
+            - PAYLOAD_TOO_LARGE
+            - UNSUPPORTED_MEDIA_TYPE
+            - GAME_NOT_RANKED
+            - SCORE_REJECTED
+            - RATE_LIMITED
+            - INTERNAL_ERROR
+        message: { type: string }
+      examples:
+        - { code: VALIDATION_ERROR, message: 'querystring/limit must be <= 100' }
+  responses:
+    NotFound:
+      description: Không tìm thấy (`code` = `NOT_FOUND`)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    BadRequest:
+      description: Dữ liệu không hợp lệ (`code` = `VALIDATION_ERROR`)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Chưa đăng nhập hoặc phiên đăng nhập không còn hiệu lực (`code` = `UNAUTHORIZED`)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Header `Origin` thiếu hoặc không phải origin của web (`code` = `FORBIDDEN`)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    PayloadTooLarge:
+      description: Body vượt 1 KiB (`code` = `PAYLOAD_TOO_LARGE`)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    UnsupportedMediaType:
+      description: Content-Type không phải `application/json` (`code` = `UNSUPPORTED_MEDIA_TYPE`)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    GameNotRanked:
+      description: Game không xếp hạng (`code` = `GAME_NOT_RANKED`)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: |
+        Vượt giới hạn tần suất theo IP (`code` = `RATE_LIMITED`). Giới hạn (cửa sổ cố định): `POST /sessions`
+        và `POST /sessions/{id}/score` 60 / phút; `GET /games/{id}/leaderboard` 120 / phút;
+        `POST /auth/register` 10 / 10 phút; `POST /auth/login` 30 / 5 phút / IP **và** 10 / 15 phút / email;
+        `PATCH /me`, `POST /me/password` 20 / 15 phút; `GET /me/sessions`, `GET /me/bests` 120 / phút.
+      headers:
+        Retry-After:
+          description: Số giây (nguyên, ≥ 1) cho tới khi cửa sổ hiện tại kết thúc.
+          schema: { type: integer, minimum: 1 }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InternalError:
+      description: Lỗi server (`code` = `INTERNAL_ERROR`)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }

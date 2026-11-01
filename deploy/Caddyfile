@@ -1,0 +1,67 @@
+# Caddy production (ADR-031/032): HTTPS tự động, web tĩnh + /api cùng origin, game ở origin riêng.
+# Không cấu hình trusted_proxies: Caddy luôn ghi X-Forwarded-For bằng IP client thật (api TRUST_PROXY=1).
+{
+	email {$ACME_EMAIL}
+}
+
+(hsts) {
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+}
+
+(web_headers) {
+	header {
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; media-src 'self'; frame-src https://{$GAMES_DOMAIN}; worker-src 'none'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "same-origin"
+		Permissions-Policy "accelerometer=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		Cross-Origin-Resource-Policy "same-origin"
+	}
+}
+
+{$WEB_DOMAIN} {
+	import hsts
+	encode zstd gzip
+
+	# Header API do app đặt (security-headers.ts); không áp header web lên /api.
+	handle /api/* {
+		reverse_proxy api:3000
+	}
+
+	# Cache vĩnh viễn chỉ khi file tồn tại; 404 (chunk của bản build cũ) không bị cache.
+	handle /assets/* {
+		import web_headers
+		@asset file
+		@missing not file
+		header @asset Cache-Control "public, max-age=31536000, immutable"
+		header @missing Cache-Control "no-store"
+		root * /srv/web
+		file_server
+	}
+
+	handle /thumbnails/* {
+		import web_headers
+		header Cache-Control "public, max-age=86400"
+		root * /srv/web
+		file_server
+	}
+
+	handle {
+		import web_headers
+		header Cache-Control "no-cache"
+		root * /srv/web
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+# CSP/nosniff/Referrer-Policy của game do games server đặt; Caddy chỉ thêm HSTS.
+{$GAMES_DOMAIN} {
+	import hsts
+	encode zstd gzip
+	reverse_proxy games:5174
+}

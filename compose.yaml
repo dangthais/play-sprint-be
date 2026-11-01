@@ -1,0 +1,164 @@
+# Production trên một VPS (ADR-030). Hướng dẫn: docs/deployment.md.
+# Biến bắt buộc (đặt trong .env cạnh file này): POSTGRES_PASSWORD, WEB_DOMAIN, GAMES_DOMAIN, ACME_EMAIL.
+name: play-sprint
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '3'
+
+x-hardening: &hardening
+  restart: unless-stopped
+  init: true
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: ['no-new-privileges:true']
+  logging: *logging
+
+x-db-url: &db-url postgres://qp:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@db:5432/quick_playing
+
+x-api-build: &api-build
+  context: .
+  target: api
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: quick_playing
+      POSTGRES_USER: qp
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U qp -d quick_playing']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [backend]
+    logging: *logging
+
+  # Chạy mỗi lần `up`; idempotent ("No pending migrations.").
+  migrate:
+    <<: *hardening
+    build: *api-build
+    image: play-sprint-api
+    restart: 'no'
+    command: ['node', 'dist/db/migrate.js']
+    environment:
+      DATABASE_URL: *db-url
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [backend]
+
+  # Chạy tay: docker compose run --rm seed (ghi đè luật điểm trong DB).
+  seed:
+    <<: *hardening
+    build: *api-build
+    image: play-sprint-api
+    restart: 'no'
+    command: ['node', 'dist/db/seed.js']
+    profiles: [tools]
+    environment:
+      DATABASE_URL: *db-url
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [backend]
+
+  api:
+    <<: *hardening
+    build: *api-build
+    image: play-sprint-api
+    environment:
+      HOST: 0.0.0.0
+      PORT: '3000'
+      DATABASE_URL: *db-url
+      WEB_ORIGIN: https://${WEB_DOMAIN:?WEB_DOMAIN is required}
+      GAME_ORIGIN: https://${GAMES_DOMAIN:?GAMES_DOMAIN is required}
+      TRUST_PROXY: '1'
+      COOKIE_SECURE: 'true'
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      CLEANUP_INTERVAL_MINUTES: ${CLEANUP_INTERVAL_MINUTES:-60}
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+    networks: [backend, edge]
+
+  games:
+    <<: *hardening
+    build:
+      context: .
+      target: games
+    image: play-sprint-games
+    environment:
+      GAMES_HOST: 0.0.0.0
+      GAMES_PORT: '5174'
+      WEB_ORIGIN: https://${WEB_DOMAIN:?WEB_DOMAIN is required}
+      GAME_ORIGIN: https://${GAMES_DOMAIN:?GAMES_DOMAIN is required}
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:5174/sdk/config.js').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    networks: [edge]
+
+  # Không depends_on: migrate lỗi thì site tĩnh vẫn phục vụ, /api trả 502.
+  caddy:
+    build:
+      context: ./deploy
+      dockerfile: web.Dockerfile
+      additional_contexts:
+        fe: ${FE_PATH:-../play-sprint}
+      args:
+        VITE_GAME_ORIGIN: https://${GAMES_DOMAIN:?GAMES_DOMAIN is required}
+    image: play-sprint-web
+    restart: unless-stopped
+    security_opt: ['no-new-privileges:true']
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    environment:
+      WEB_DOMAIN: ${WEB_DOMAIN:?WEB_DOMAIN is required}
+      GAMES_DOMAIN: ${GAMES_DOMAIN:?GAMES_DOMAIN is required}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL is required}
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [edge]
+    logging: *logging
+
+networks:
+  backend:
+    internal: true
+  edge: {}
+
+volumes:
+  pgdata: {}
+  caddy_data: {}
+  caddy_config: {}

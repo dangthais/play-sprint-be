@@ -1,0 +1,22 @@
+{
+  "name": "@qp/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=../../.env --watch src/server.ts",
+    "start": "node --env-file-if-exists=../../.env dist/server.js",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:migrate": "node --env-file-if-exists=../../.env src/db/migrate.ts",
+    "db:seed": "node --env-file-if-exists=../../.env src/db/seed.ts",
+    "db:cleanup": "node --env-file-if-exists=../../.env src/db/cleanup.ts"
+  },
+  "dependencies": {
+    "fastify": "^5.12.7",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1"
+  }
+}
