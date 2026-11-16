@@ -1,0 +1,54 @@
+# Render Blueprint (gói Free): API + games server. Database dùng Neon (DATABASE_URL nhập tay trên dashboard).
+# Web (FE) chạy trên Vercel: https://play-sprint.vercel.app, gọi /api qua rewrite trong vercel.json của repo FE.
+# Nếu Render đổi tên miền (tên service đã bị dùng), cập nhật WEB_ORIGIN/GAME_ORIGIN ở đây và vercel.json bên FE.
+services:
+  - type: web
+    name: play-sprint-api
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npx --yes pnpm@12.15.0 install --frozen-lockfile && npx --yes pnpm@12.15.0 --filter @qp/api build
+    # Gói Free không có pre-deploy command: migrate + seed (đều idempotent) chạy mỗi lần khởi động.
+    startCommand: cd apps/api && node dist/db/migrate.js && node dist/db/seed.js && node dist/server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: '24'
+      - key: HOST
+        value: 0.0.0.0
+      - key: DATABASE_URL
+        sync: false
+      - key: WEB_ORIGIN
+        value: https://play-sprint.vercel.app
+      - key: GAME_ORIGIN
+        value: https://play-sprint-games.onrender.com
+      - key: COOKIE_SECURE
+        value: 'true'
+      # Chuỗi proxy: client -> Vercel (rewrite) -> proxy của Render -> app.
+      - key: TRUST_PROXY
+        value: '2'
+      - key: LOG_LEVEL
+        value: info
+      - key: CLEANUP_INTERVAL_MINUTES
+        value: '60'
+
+  - type: web
+    name: play-sprint-games
+    runtime: node
+    plan: free
+    region: singapore
+    # Games server không có dependency; Node 24 chạy .ts trực tiếp.
+    buildCommand: node --version
+    startCommand: node apps/games/src/server.ts
+    healthCheckPath: /sdk/config.js
+    envVars:
+      - key: NODE_VERSION
+        value: '24'
+      - key: GAMES_HOST
+        value: 0.0.0.0
+      - key: GAMES_PORT
+        value: '10000'
+      - key: WEB_ORIGIN
+        value: https://play-sprint.vercel.app
+      - key: GAME_ORIGIN
+        value: https://play-sprint-games.onrender.com
