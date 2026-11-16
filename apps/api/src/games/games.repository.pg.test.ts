@@ -48,17 +48,40 @@ describe.skipIf(!url)('pg repository + migrations', () => {
     await seedGames(client);
     await seedScoringRules(client);
     const repo = createPgGamesRepository(client);
-    const p1 = await repo.list({ limit: 20, offset: 0 });
-    const p2 = await repo.list({ limit: 20, offset: 20 });
+    const p1 = await repo.list({ limit: 12, offset: 0 });
+    const p2 = await repo.list({ limit: 12, offset: 12 });
+    const p3 = await repo.list({ limit: 12, offset: 24 });
     expect(p1.total).toBe(SEED_GAMES.length);
+    expect(p1.total).toBe(25);
     expect(p1.items.map((g) => g.id)).toEqual([
+      'maze-chomp',
+      'block-drop',
+      'sky-hop',
+      'space-shooter',
+      'asteroid-blaster',
+      'frog-crossing',
+      'bubble-pop',
+      'mole-smash',
+      'typing-race',
+      'simon-says',
+      'minesweeper',
+      'sliding-puzzle',
+    ]);
+    expect(p2.items.map((g) => g.id)).toEqual([
+      'code-breaker',
+      'word-guess',
+      'reversi',
+      'chess',
+      'checkers',
+      'sudoku',
+      'solitaire',
+      'sea-battle',
       'tic-tac-toe',
       'merge-2048',
       'memory-match',
       'brick-breaker',
-      'snake',
     ]);
-    expect(p2.items).toEqual([]);
+    expect(p3.items.map((g) => g.id)).toEqual(['snake']);
     expect(p1.items[0]?.createdAt).toBeInstanceOf(Date);
     expect(await countNonSeedGames(client)).toBe(0);
   });
@@ -76,6 +99,9 @@ describe.skipIf(!url)('pg repository + migrations', () => {
       scoreOrder: 'desc',
     });
     expect(await repo.findById('tic-tac-toe')).toMatchObject({ ranked: false, scoreOrder: null });
+    expect(await repo.findById('chess')).toMatchObject({ ranked: false, scoreOrder: null });
+    expect(await repo.findById('word-guess')).toMatchObject({ ranked: true, scoreOrder: 'asc' });
+    expect(await repo.findById('maze-chomp')).toMatchObject({ ranked: true, scoreOrder: 'desc' });
     expect(found?.createdAt).toBeInstanceOf(Date);
     expect(await repo.findById('nope')).toBeNull();
     expect(await repo.findById("x' OR '1'='1")).toBeNull();

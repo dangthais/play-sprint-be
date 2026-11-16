@@ -72,6 +72,13 @@ describe('GET /api/games/:gameId/leaderboard', () => {
     expect(names(res)).toEqual(['Best', 'Mid', 'Slow']);
   });
 
+  it('word-guess leaderboard is asc (F5 AC10)', async () => {
+    const x = (h = makeHarness());
+    const res = await board(x, 'word-guess');
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ gameId: 'word-guess', scoreOrder: 'asc', items: [] });
+  });
+
   it('keeps one entry per case-insensitive name with the best result (AC18)', async () => {
     const x = (h = makeHarness());
     await play(x, 'snake', 'Lan', 10, 60_000);

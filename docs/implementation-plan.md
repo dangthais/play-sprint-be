@@ -7,7 +7,7 @@ Trạng thái: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong
 - [x] Khởi tạo repo (monorepo pnpm `apps/api`, `apps/web`), lint (ESLint), format (Prettier), Vitest, Playwright — T0, session chính
 - [ ] CI (chưa có; cần PostgreSQL service để chạy test DB + e2e full-stack) → Giai đoạn 4 / T4 (CI repo backend; e2e full-stack chưa lên CI)
 - [x] Khởi tạo git (`git init`, nhánh `main`; chưa có commit)
-- [x] Hoàn thiện `api-contract.yaml` — nay ở **v0.5.1** (Giai đoạn 4, chỉ mô tả header)
+- [x] Hoàn thiện `api-contract.yaml` — nay ở **v0.5.2** (F5, chỉ mô tả/ví dụ; v0.5.1 Giai đoạn 4 chỉ mô tả header)
 
 ## Giai đoạn 1 — MVP
 - [~] **F1. Trang danh sách game** (`GET /games` phân trang + grid thumbnail) — code, unit test, e2e UI, review xong; còn chờ kiểm chứng trên PostgreSQL thật và `.env.example` (xem bảng)
@@ -286,6 +286,154 @@ Mặc định đã chọn (xem "Câu hỏi mở" bên dưới): Caddy proxy sang
 - Nguồn FE khi deploy: thư mục local hay git URL ghim tag? (mặc định: `FE_PATH=../play-sprint`)
 - Sau khi tách, monorepo còn vai trò gì (chỉ e2e tích hợp / lưu trữ)? `apps/web` canonical ở `play-sprint`?
 - Cho phép tạo commit / push lên `dangthais/play-sprint-be`? (mặc định: không, chờ người dùng)
+
+## Giai đoạn 5 — Mở rộng catalog
+- [x] **F5. 20 game mới** (tổng 25) từ cùng repo MIT `he-is-talha/html-css-javascript-games` @ `aafbeac2119b9442790aee50cd143cdc4aeb1f88` — 15 game xếp hạng + 5 game chỉ chơi. Người dùng đã duyệt yêu cầu. Đồng bộ sang `play-sprint-be`/`play-sprint` do session chính làm sau (không thuộc bảng task).
+
+### F5. 20 game mới
+Contract: `docs/api-contract.yaml` **v0.5.2** (patch — chỉ mô tả/ví dụ; không đổi endpoint/schema). Kiến trúc: §5.3, §5.4, §5.5; **ADR-038** (chọn game, tên trung tính, khoá độ khó, mẫu tích hợp chung), **ADR-039** (luật điểm 15 game mới — mở rộng ADR-016). Giao thức game vẫn **v1** (không đổi message). Không migration (chỉ dữ liệu seed). **Không thêm dependency.**
+
+Tiêu chí loại khi khảo sát 45 thư mục còn lại: CDN/thư viện ngoài không gỡ được (07 Crossy Road, 13 Tower Blocks — three.js/GSAP; 14 Archery — GSAP + MorphSVG; 19 Ping Pong — jQuery/Bootstrap; 32 Fruit Slicer — jQuery UI + ảnh/âm thanh ngoài; 09 Flappy Bird — toàn bộ sprite ở `s2js.com`), gọi API mạng (17 Speed Typing — `fetch` quote API), microphone/Web Speech (31), cờ bạc (39 Blackjack, 47 Poker), không phải game/không kết thúc (28 Dice Roll, 29 Shape Clicker, 26 Insect Catch — vô tận + ảnh `pngimg.com`), trùng thể loại (30 Typing — giữ 27; 23 Number Guessing — quá đơn giản), ảnh bản quyền/thương hiệu (01 Candy Crush — kẹo từ GitHub raw), nội dung mỏng (33 Quiz — 20 câu cố định), mã khó (21 Tilting Maze — 679 dòng, link ngoài). Dự phòng: xem cuối mục.
+
+#### Danh sách game (hợp đồng chung cho mọi task — `id` = tên thư mục game = tên file thumbnail)
+`created_at = 2026-11-10T00:00:00Z + i giờ` (i theo cột #). Tên/`id` trung tính, không dùng tên thương hiệu (ADR-038). "Khoá" = game xếp hạng có màn chọn độ khó được khoá vào một mức, ẩn màn chọn/nút đổi mức.
+
+| # | id | title | Thư mục upstream | Xếp hạng | Ý nghĩa `score` | tags | orientation |
+|---|---|---|---|---|---|---|---|
+| 0 | `sea-battle` | Sea Battle | `48-Battleship-Game` | không | 0 | board, strategy | any |
+| 1 | `solitaire` | Solitaire | `05-Solitaire-Game` | không | 0 | classic, cards | any |
+| 2 | `sudoku` | Sudoku | `06-Sudoku-Game` | không | 0 | puzzle, numbers | any |
+| 3 | `checkers` | Checkers | `41-Checkers-Game` | không | 0 | board, classic | any |
+| 4 | `chess` | Chess | `03-Chess-Game` | không | 0 | board, classic | any |
+| 5 | `reversi` | Reversi | `44-Reversi-Game` | desc | số quân đen (người chơi) khi hết ván, 0–64; khoá Medium (AI greedy, 3 undo) | board, classic | any |
+| 6 | `word-guess` | Word Guess | `11-Wordle-Game` | **asc** | số lượt đoán khi thắng (1–6); thua = 7; khoá Medium (5 chữ, 6 lượt), tắt gợi ý | puzzle, words | any |
+| 7 | `code-breaker` | Code Breaker | `38-Mastermind-Game` | **asc** | số lượt đoán khi thắng (1–10); thua = 11; khoá Medium (4 chốt, 6 màu, 10 lượt) | puzzle, logic | any |
+| 8 | `sliding-puzzle` | Sliding Puzzle | `37-Sliding-Puzzle-Game` | **asc** | số bước trượt khi giải xong; khoá Easy (3×3) | puzzle | any |
+| 9 | `minesweeper` | Minesweeper | `16-Minesweeper-Game` | desc | số ô đã mở (0–54; 54 = thắng; hoà điểm xếp theo thời gian ngắn) | puzzle, classic | any |
+| 10 | `simon-says` | Simon Says | `36-Simon-Says-Game` | desc | số cấp đã vượt qua | classic, memory | any |
+| 11 | `typing-race` | Typing Race | `27-Typing-Game` | desc | số từ gõ đúng; khoá Medium (+3 s/từ) | arcade, words | any |
+| 12 | `mole-smash` | Mole Smash | `35-Whack-A-Mole-Game` | desc | số lần đập trúng trong 10 s | arcade, reflex | any |
+| 13 | `bubble-pop` | Bubble Pop | `40-Bubble-Shooter-Game` | desc | điểm upstream (10/bóng nổ, 15/bóng rơi); khoá Medium | arcade, puzzle | portrait |
+| 14 | `frog-crossing` | Frog Crossing | `46-Frogger-Game` | desc | điểm upstream (10/hàng tiến, 200 + 10×giây còn lại/tổ, 1000 khi thắng); khoá Medium | arcade, classic | any |
+| 15 | `asteroid-blaster` | Asteroid Blaster | `43-Asteroids-Game` | desc | điểm upstream (20/50/100 theo cỡ đá, 200/UFO); khoá Medium (5 đợt) | arcade, shooter | portrait |
+| 16 | `space-shooter` | Space Shooter | `42-Space-Invaders-Game` | desc | điểm upstream (10/alien, cộng dồn qua các đợt); khoá Medium | arcade, shooter | portrait |
+| 17 | `sky-hop` | Sky Hop | `04-Doodle-Jump-Game` | desc | độ cao = `floor(px/8)` | arcade | portrait |
+| 18 | `block-drop` | Block Drop | `20-Tetris-Game` | desc | điểm upstream (5×cấp/khối, 40×cấp/hàng) | arcade, classic | any |
+| 19 | `maze-chomp` | Maze Chomp | `02-Pac-Man-Game` | desc | điểm upstream (10/viên, 50/viên lớn; tối đa 3800) | arcade, classic | portrait |
+
+Thứ tự API sau F5 (createdAt DESC, id ASC): `maze-chomp, block-drop, sky-hop, space-shooter, asteroid-blaster, frog-crossing, bubble-pop, mole-smash, typing-race, simon-says, minesweeper, sliding-puzzle` (trang 1 với `limit=12`) · `code-breaker, word-guess, reversi, chess, checkers, sudoku, solitaire, sea-battle, tic-tac-toe, merge-2048, memory-match, brick-breaker` (trang 2) · `snake` (trang 3). Tổng 25; 19 xếp hạng (4 cũ + 15 mới), 6 không xếp hạng (tic-tac-toe + 5 mới).
+
+Mô tả seed (tiếng Việt, backend dùng nguyên văn hoặc sửa nhẹ, ≤ 500 ký tự):
+- `sea-battle`: Xếp hạm đội rồi bắn từng ô để đánh chìm toàn bộ tàu của máy trước khi máy đánh chìm tàu của bạn.
+- `solitaire`: Xếp bài Klondike: chuyển các lá xen kẽ màu theo thứ tự giảm dần và đưa đủ bốn chất lên ô đích.
+- `sudoku`: Điền số vào lưới sao cho mỗi hàng, cột và khối đều không trùng số; chọn độ khó 4×4, 6×6 hoặc 9×9.
+- `checkers`: Cờ đam 8×8 với máy: đi chéo, nhảy qua quân đối thủ để ăn và phong vua khi chạm cuối bàn.
+- `chess`: Cờ vua đầy đủ luật, chơi hai người cùng máy hoặc đấu với máy.
+- `reversi`: Đặt quân kẹp quân đối thủ theo hàng, cột hoặc đường chéo để lật màu; hết ván ai nhiều quân hơn thắng. Điểm là số quân của bạn.
+- `word-guess`: Đoán từ tiếng Anh 5 chữ trong 6 lượt; màu ô cho biết chữ đúng vị trí, có trong từ hay không có. Càng ít lượt càng tốt.
+- `code-breaker`: Đoán mã 4 màu bí mật; mỗi lượt nhận gợi ý đúng màu đúng chỗ và đúng màu sai chỗ. Càng ít lượt càng tốt.
+- `sliding-puzzle`: Trượt các ô số trên bàn 3×3 để xếp lại theo thứ tự. Càng ít bước càng tốt.
+- `minesweeper`: Mở các ô trên bàn 8×8 có 10 quả mìn; số trên ô cho biết số mìn xung quanh. Mở hết ô an toàn để thắng.
+- `simon-says`: Nhớ và bấm lại chuỗi màu ngày càng dài; sai một lần là kết thúc.
+- `typing-race`: Gõ thật nhanh từ tiếng Anh hiện trên màn hình; mỗi từ đúng được cộng thêm thời gian.
+- `mole-smash`: Đập chuột chũi trồi lên khỏi hang trong 10 giây.
+- `bubble-pop`: Ngắm và bắn bóng màu; ghép từ 3 bóng cùng màu để làm nổ và làm rơi các bóng treo.
+- `frog-crossing`: Đưa ếch băng qua đường xe chạy và dòng sông về đủ 5 tổ trước khi hết giờ.
+- `asteroid-blaster`: Lái phi thuyền xoay, tăng tốc và bắn vỡ thiên thạch qua 5 đợt; coi chừng đĩa bay.
+- `space-shooter`: Di chuyển khẩu pháo và bắn hạ đội hình người ngoài hành tinh trước khi chúng xuống tới nơi.
+- `sky-hop`: Nhảy từ bệ này sang bệ khác để lên cao nhất có thể; rơi khỏi màn hình là thua.
+- `block-drop`: Xoay và thả các khối rơi để lấp đầy hàng ngang; hàng đầy sẽ biến mất.
+- `maze-chomp`: Ăn hết các viên trong mê cung bằng phím mũi tên và né hai bóng ma; có 3 mạng.
+
+#### Mẫu tích hợp chung (ADR-038, áp dụng cho cả 20 game)
+- Chép đúng các file cần của thư mục upstream vào `apps/games/public/games/<id>/` (`index.html` là điểm vào). Không chạy bất kỳ script nào của upstream.
+- `index.html`: bỏ favicon `i.ibb.co`; bỏ Google Fonts/Font Awesome/CDN; thêm `<script src="/sdk/config.js">` → `<script src="/sdk/qp-sdk.js">` trước script game (cùng `defer` nếu game dùng). Không inline script/handler (`onClick=` → `addEventListener`).
+- CSS: bỏ `@import`/`url(http…)`; font hệ thống (`system-ui, …`); chuỗi font trong canvas (`"… Outfit …"`) đổi tương tự.
+- Thay `alert`/`confirm`/`prompt`/`history.go`/HTML template có handler bằng lớp phủ dựng bằng DOM API + `textContent`; nút "Chơi lại" được phép gọi `location.reload()` (như Snake). `localStorage` bọc `try/catch` hoặc bỏ.
+- `QP.ready()`: **khi tải trang, không cần thao tác người dùng** (host báo lỗi nếu không có `ready` trong 15 s) và **mỗi khi bắt đầu ván mới sau khi ván trước đã kết thúc hoặc bị bỏ giữa chừng** (Play Again/New Game/Restart). Lần bấm "Play/Start" đầu tiên ngay sau khi tải trang **không** gọi lại `ready` (tránh tạo 2 phiên).
+- `QP.score(n)` khi điểm đổi (game có điểm đổi theo từng khung hình như `sky-hop`: tối đa ~4 lần/giây). `QP.gameOver(n)` **đúng một lần mỗi ván** (cờ), khi thắng hoặc thua; với game không xếp hạng `n = 0`.
+- Game xếp hạng có màn chọn độ khó: tự vào mức đã khoá khi tải trang, ẩn màn chọn mức và các nút "Change level" (CSS `display:none` hoặc bỏ gắn sự kiện); giữ phần trợ giúp. Game không xếp hạng giữ nguyên màn chọn.
+- Mỗi file đã sửa có comment đầu file "Modified for Quick Playing — xem apps/games/UPSTREAM.md"; chuyển CRLF → LF ở file đã sửa. Chỉ dùng đuôi `.html .js .css .png .jpg .svg .txt`; không `data:` URL cho ảnh (CSP `img-src 'self'`).
+- Mỗi task game-integration **ghi chú thay đổi từng game trong report** (để T7 chép vào UPSTREAM.md), kèm hằng số đã kiểm (vd. số viên của `maze-chomp`) nếu khác bảng luật.
+
+Ghi chú vá theo game (ngoài mẫu chung):
+- `maze-chomp`: 2 `alert` → lớp phủ; `gameOver` khi ăn hết viên và khi hết mạng; `restartBtn` → `QP.ready()`. Kiểm lại số viên trong `levelLayout` (architect đếm 360 viên + 4 viên lớn = 3800 điểm tối đa).
+- `sky-hop`: `localStorage` ở dòng khởi tạo IIFE sẽ throw trong sandbox → bọc `try/catch` (đọc + ghi). `gameOver()` → `QP.gameOver(score)`. Vật lý theo khung hình (ghi rủi ro tần số quét).
+- `block-drop`: không có nút chơi lại → lớp phủ "Game Over" + "Chơi lại" (`location.reload()`), bỏ `innerHTML = "<h1>GAME OVER</h1>"`; chặn `level` vượt `numLevels` (upstream throw ở cấp 11); kiểm phím mũi tên chạy trên Chromium + Firefox (upstream chọn `keypress`/`keydown` theo UA).
+- `space-shooter`: "Wave cleared" **không** phải `gameOver` (đợt sau cộng dồn điểm, cùng phiên); `gameOver` khi hết mạng.
+- `asteroid-blaster`, `frog-crossing`, `bubble-pop`: `gameOver` ở hàm kết thúc (thắng hoặc thua).
+- `mole-smash`: `onClick` inline → `addEventListener`; thay ảnh chuột/đất ngoài (`s3…cdpn.io`) bằng SVG/CSS tự vẽ đặt cùng thư mục (hoặc emoji); chỉ tính điểm khi hang đang `up` và chưa hết giờ (upstream có thể tính 2 lần trong lúc chuột đang lặn); `gameOver(score)` khi hết 10 s.
+- `typing-race`: `localStorage` ở top-level throw → bỏ, khoá Medium, ẩn nút/khung settings; bỏ Font Awesome (biểu tượng → chữ); thay template `innerHTML` có `onclick="history.go(0)"` bằng DOM API + `addEventListener`; `gameOver(score)` khi thời gian về 0. Đồng hồ chạy ngay khi tải trang.
+- `simon-says`: sửa `missedColor` không định nghĩa (ReferenceError); `score` = `level − 1` khi thua; `QP.score` sau mỗi cấp vượt qua.
+- `minesweeper`: không có nút chơi lại → thêm "Chơi lại"; `score` = `tilesClicked`; `gameOver` khi đạp mìn hoặc mở hết 54 ô.
+- `sliding-puzzle`: ảnh `picsum.photos` → ô hiển thị số (`textContent`) + CSS; khoá Easy 3×3.
+- `code-breaker`, `word-guess`: thua → `gameOver(maxGuesses + 1)` (= 11 và 7). `word-guess`: ẩn/tắt toggle gợi ý.
+- `reversi`: `gameOver(count(board, BLACK))` trong `endGame`; `QP.score` số quân đen sau mỗi nước.
+- `chess`, `checkers`, `sudoku`, `solitaire`, `sea-battle`: không xếp hạng; `gameOver(0)` khi chiếu hết/hoà/thắng/thua (theo hàm kết thúc upstream); giữ màn chọn chế độ/độ khó.
+
+#### Tiêu chí chấp nhận F5
+**Game integration**
+- AC1: Với mỗi `id` mới, `GET <GAME_ORIGIN>/games/<id>/` → 200 kèm CSP của games server; mọi tài nguyên tham chiếu là đường dẫn tương đối cùng origin và có đuôi trong whitelist. Trong `apps/games/public/games/<20 id>/**` không còn chuỗi `http://`/`https://` ngoài comment, không còn `localStorage`/`sessionStorage` chưa bọc `try/catch`, `alert(`, `confirm(`, `prompt(`, `history.go`, `document.cookie`, `fetch(`, `XMLHttpRequest`, thuộc tính `on…=` trong HTML/chuỗi template, `<script>` không có `src`.
+- AC2: Mở từng game trong host (iframe sandbox, games server thật): host nhận `ready` trong 15 s **không cần thao tác**; không có `pageerror` khi tải; không có sự kiện `securitypolicyviolation`.
+- AC3 (xếp hạng): mỗi ván kết thúc gửi `gameOver` đúng một lần với `score` đúng nghĩa ở bảng; bấm chơi lại/ván mới → `ready` (host tạo phiên mới). Game có khoá độ khó không hiện màn chọn mức hay nút đổi mức; `word-guess` không còn toggle gợi ý.
+- AC4 (không xếp hạng): `ready` khi tải và khi chơi lại; `gameOver(0)` khi ván kết thúc.
+- AC5 (kiểm tất định trong e2e): `typing-race` không gõ gì → sau ~10 s `gameOver(0)`; `mole-smash` bấm Start, không đập → sau ~10 s `gameOver(0)`; `sliding-puzzle` trượt 1 ô hợp lệ → host hiện "Số lượt: 1".
+- AC6: `UPSTREAM.md` có 25 dòng ánh xạ + thay đổi từng game mới; mọi file đã sửa có "Modified for Quick Playing"; `public/games/LICENSE.txt` không đổi. `docs/game-protocol.md` có ý nghĩa `score` của 25 game. Unit test games server phủ 25 `id` (200 + header).
+
+**Backend** (unit test, repo in-memory; phần pg skip khi thiếu `TEST_DATABASE_URL`)
+- AC7: `SEED_GAMES` có 25 game, `id` duy nhất, đúng `title`/`tags`/`orientation`/`createdAt` của bảng trên (5 game cũ giữ nguyên); mọi game có `description` 1–500 ký tự; mỗi game có ít nhất một tag thuộc danh mục FE (`arcade|puzzle|classic|board`). In-memory `list({limit:25})` trả đúng thứ tự API ở trên.
+- AC8: `SEED_RULES` có đúng 19 luật (4 cũ không đổi + 15 mới, khớp từng giá trị bảng §5.5 / ADR-039); 6 game `tic-tac-toe, chess, checkers, sudoku, solitaire, sea-battle` không có luật → `ranked:false`, không `scoreOrder`. `seedScoringRules` trả 19, chạy lại an toàn.
+- AC9 (`verifyScore`, table-driven cho 15 luật mới): `max + 1` → `SCORE_OUT_OF_RANGE`; asc: `min − 1` (nếu `min > 0`) → `SCORE_OUT_OF_RANGE`; có `min_duration_ms > 0`: `durationMs = min − 1` → `DURATION_TOO_SHORT`, `= min` (với điểm hợp lệ) → ok; có `max_score_per_sec`: tại `durationMs = 10_000`, `score = slack + floor(rate × 10)` (kẹp ≤ max) → ok, `+1` → `SCORE_RATE_EXCEEDED`; có `min_ms_per_score`: ví dụ `typing-race` 30 từ ở 65 999 ms → `DURATION_TOO_SHORT`, 66 000 ms → ok (9 000 + 1 900 × 30); `simon-says` 10 cấp ở 29 999 ms → từ chối, 30 000 ms → ok; `mole-smash` 20 ở 9 499 ms → từ chối, 9 500 ms → ok.
+- AC10: `POST /api/sessions {gameId:'chess'}` → 422 `GAME_NOT_RANKED`; `{gameId:'maze-chomp'}` → 201; `GET /api/games/word-guess/leaderboard` → 200 `scoreOrder:'asc'`. Test F1–F4 cũ của api vẫn pass.
+
+**Frontend**
+- AC11: 20 file `apps/web/public/thumbnails/<id>.svg` (ghi đè 9 file F1 cùng tên: `block-drop, bubble-pop, minesweeper, simon-says, sliding-puzzle, solitaire, space-shooter, sudoku, typing-race`), `viewBox="0 0 320 240"`, cùng phong cách 5 thumbnail hiện có (gradient nền, bóng mờ); không `<script>`, `<foreignObject>`, `href`/`url()` ra ngoài, không font ngoài; mỗi file ≤ 6 KB. Không xoá thumbnail F1 không dùng (`mini-golf.svg` còn dùng trong e2e giả lập).
+- AC12: Không cần đổi mã FE: catalog 25 game hiển thị 3 trang (`PAGE_SIZE = 12`), ô danh mục đếm đúng theo tag, game `asc` hiện nhãn "Số lượt", game không xếp hạng hiện `unranked-note`. Test web cũ vẫn pass.
+
+**QA / hồi quy**
+- AC13: Fixture `tests/e2e/fixtures/games.ts`: `SEED_GAME_IDS` (25, thứ tự API), `SEED_TITLES`, `SEED_RANKING` cập nhật; spec đếm thẻ trang 1 dùng `min(12, total)` và kiểm phân trang; `games-api.spec.ts` (total 25, thứ tự, mọi thumbnail tải được qua 3 trang), `games-server.spec.ts` (header cho 25 game), `play-game.spec.ts` (AC2 cho 25 game: `ready` trong host với API giả lập), `scoring-api.spec.ts` (vòng lặp game xếp hạng = 19), `production.spec.ts` (total 25) đã cập nhật.
+- AC14: Toàn bộ unit (api/web/games), lint, typecheck, build pass; e2e F1–F4 + F5 pass (full-stack skip đúng khi thiếu DB).
+
+#### Hợp đồng nội bộ giữa các task
+- Bảng game + thứ tự API + mô tả ở trên là nguồn chung cho T1 (seed), T2–T4 (thư mục game), T5 (tên file thumbnail), T6 (fixture e2e).
+- Luật điểm: bảng §5.5 trong `docs/architecture.md` (ADR-039). Nếu T2–T4 phát hiện hằng số khác giả định (vd. số viên `maze-chomp`), ghi vào report; session chính sửa seed ở T8 (thay đổi nhỏ trong lúc tích hợp) và cập nhật §5.5.
+- Không đổi giao thức game, SDK, games server, `GameHost`, contract schema.
+
+#### Bảng task
+| ID | Agent | Mô tả | File sở hữu | Phụ thuộc | Done khi | Trạng thái |
+|---|---|---|---|---|---|---|
+| T1 | backend | Seed 20 game mới + 15 luật điểm (ADR-039); cập nhật test seed, test `verifyScore` table-driven, thứ tự trong test pg | `apps/api/src/db/seed.ts`, `apps/api/src/db/seed.test.ts`, `apps/api/src/sessions/scoring.test.ts`, `apps/api/src/games/games.repository.pg.test.ts` | — | AC7–AC10 có test pass (pg skip khi thiếu DB); test api cũ pass; lint/typecheck pass | [x] seed 25 game + 19 luật; test seed/verifyScore/route/pg pass (pg chạy trên Postgres thật) |
+| T2 | game-integration | Nhóm A (canvas/arcade, 6 game): `maze-chomp`, `sky-hop`, `block-drop`, `space-shooter`, `asteroid-blaster`, `frog-crossing` | `apps/games/public/games/{maze-chomp,sky-hop,block-drop,space-shooter,asteroid-blaster,frog-crossing}/**` (mới) | — | AC1–AC3 cho 6 game (tự kiểm bằng trình duyệt/script đọc tĩnh); report liệt kê thay đổi từng game + hằng số đã kiểm | [x] 6 game; kiểm bằng trình duyệt; sau review thêm lớp phủ "Nhấn để bắt đầu" (R2) |
+| T3 | game-integration | Nhóm B (7 game): `bubble-pop`, `mole-smash`, `typing-race`, `simon-says`, `minesweeper`, `sliding-puzzle`, `code-breaker` | `apps/games/public/games/{bubble-pop,mole-smash,typing-race,simon-says,minesweeper,sliding-puzzle,code-breaker}/**` (mới) | — | AC1–AC3, AC5 cho 7 game; report như T2 | [x] 7 game; sau review sliding-puzzle loại bàn có lời giải < 18 nước (R4) |
+| T4 | game-integration | Nhóm C (7 game): `word-guess`, `reversi` (xếp hạng); `chess`, `checkers`, `sudoku`, `solitaire`, `sea-battle` (không xếp hạng) | `apps/games/public/games/{word-guess,reversi,chess,checkers,sudoku,solitaire,sea-battle}/**` (mới) | — | AC1–AC4 cho 7 game; report như T2 | [x] 7 game; sau review sửa Enter ở word-guess (R1), timer AI reversi (R6) |
+| T5 | frontend | 20 thumbnail SVG theo phong cách hiện có | `apps/web/public/thumbnails/<20 id>.svg` (11 mới + ghi đè 9 file F1 cùng tên) | — | AC11; `pnpm --filter @qp/web build` pass | [x] 20 SVG ≤ 5,2 KB, không tham chiếu ngoài |
+| T6 | qa-engineer | Cập nhật e2e theo catalog 25 game + spec F5 (`ready` 25 game, AC5 tất định) | `tests/e2e/fixtures/games.ts`, `tests/e2e/games-api.spec.ts`, `tests/e2e/games-server.spec.ts`, `tests/e2e/play-game.spec.ts`, `tests/e2e/scoring-api.spec.ts`, `tests/e2e/production.spec.ts`, `tests/e2e/games-f5.spec.ts` (mới) | — (viết theo bảng game; chạy ở T8) | Spec viết xong, typecheck `tests` pass, full-stack tự skip khi thiếu DB | [x] fixture/spec 25 game + games-f5.spec.ts (15 test: AC3, AC4, AC5, hồi quy R1/R3, lớp phủ bắt đầu) |
+| T7 | game-integration | Gộp ghi chú T2–T4: `UPSTREAM.md` (25 dòng ánh xạ + thay đổi từng game), `docs/game-protocol.md` (bảng ý nghĩa `score` 25 game, quy tắc `ready` khi tải trang), unit test games server phủ 25 `id` | `apps/games/UPSTREAM.md`, `docs/game-protocol.md`, `apps/games/src/games-server.test.ts` | T2, T3, T4 | AC6; `pnpm --filter @qp/games test` pass | [x] UPSTREAM.md 25 dòng, game-protocol.md (bảng điểm 25 game, quy tắc ready), games-server test 25 id |
+| T8 | session chính | Chạy unit (api/web/games), lint, typecheck, build, e2e (UI + games server + full-stack nếu có DB: `pnpm db:seed` rồi `games-api`/`scoring-api`); chỉnh seed nếu report T2–T4 báo hằng số khác; cập nhật §5.5 | — (chỉ chạy lệnh; sửa nhỏ `seed.ts`/docs nếu cần) | T1–T7 | AC12–AC14 pass hoặc ghi rõ lý do | [x] Unit (Postgres thật): api 628, web 436, games 73; lint/typecheck/build pass; e2e 465 pass, 25 skip (smoke production cần PROD_*), 0 fail. Chỉnh seed: sky-hop/space-shooter 200 điểm/s, reversi min 3000 ms, frog-crossing slack 2500 |
+| T9 | code-reviewer | Review diff T1–T7 (trọng tâm: tài nguyên ngoài/inline script còn sót, storage/alert, `gameOver` một lần, ngưỡng điểm hợp lý, nội dung thumbnail) | — (chỉ đọc) | T8 | Finding hợp lệ đã sửa, kiểm tra liên quan chạy lại | [x] 0 Critical/High; R1–R6 đã sửa, R7 đã sửa (slack), R8/R9 chấp nhận (ghi rủi ro) |
+| T10 | session chính | Cập nhật tiến độ kế hoạch + report cuối | `docs/implementation-plan.md` | T9 | Trạng thái bảng đúng thực tế | [x] |
+
+Đợt 1 (song song, file không giao nhau): T1, T2, T3, T4, T5, T6 · Đợt 2: T7 (sau T2–T4) · Đợt 3: T8 → T9 (+ sửa finding, chạy lại) → T10.
+
+Dự phòng (nếu một game không tích hợp được trong T2–T4, task đó thay bằng game dự phòng cùng loại xếp hạng, ghi trong report; T1/T5/T6 nhận cập nhật ở T8): `lights-out` (`50-Lights-Out-Game`, asc số lần bấm, khoá Medium 5×5; luật gợi ý min 1, max 2000, min_duration 2000, 150 ms/lần), `emoji-catcher` (`34-Emoji-Catcher-Game`, desc số lần bắt trong 60 s; ảnh nền Guardian → emoji/CSS, `alert` → lớp phủ; luật gợi ý max 120, min_duration 59 000), `mahjong-solitaire` (`45-Mahjong-Solitaire-Game`, không xếp hạng), `connect-four`→ đặt `id` `four-in-a-row` (`25-Connect-Four-Game`, không xếp hạng, 2 người cùng máy, 3 `alert`).
+
+#### Rủi ro F5
+- Ngưỡng điểm suy từ đọc tĩnh mã upstream, chưa đo thực tế; có thể chặn nhầm (theo dõi log `score_rejected`) hoặc quá rộng. Game vật lý theo khung hình (`sky-hop`, `space-shooter`, `bubble-pop`) chạy nhanh hơn trên màn hình > 144 Hz → có thể vượt trần tốc độ (như Brick Breaker).
+- Game `asc` (`word-guess`, `code-breaker`, `sliding-puzzle`) và game điểm trần thấp (`minesweeper` 54, `reversi` 64, `mole-smash` 50): nhiều người hoà điểm → hạng do thời lượng quyết định; kẻ gian nộp điểm tốt nhất ở thời lượng tối thiểu vẫn lọt (cùng điểm yếu Memory Match) — chỉ giảm bằng rate limit + `hidden`.
+- Độ khó bị khoá làm mất lựa chọn của người chơi ở game xếp hạng (đổi lại leaderboard công bằng); leaderboard theo độ khó cần schema mới (ngoài phạm vi).
+- Lượng mã vendored tăng mạnh (~10 000 dòng, nhiều game 500–1000 dòng): review khó, lỗi upstream tiềm ẩn (đã biết: `simon-says` `missedColor`, `block-drop` cấp 11, Minesweeper không bảo vệ cú mở đầu).
+- Game chỉ điều khiển bằng bàn phím (`maze-chomp`, `block-drop`, `typing-race`, `asteroid-blaster`) không chơi được trên màn hình cảm ứng.
+- Game có màn hình "Start/Play" tạo phiên ngay khi tải trang (để kịp `ready` trong 15 s) → nhiều phiên bỏ dở hơn (job dọn ADR-035 xử lý).
+- DB dev đã seed theo F1: 9 `id` F1 trùng `id` F5 sẽ được upsert thành game thật; 11 dòng F1 còn lại vẫn bị cảnh báo và làm `games-api.spec.ts` (kiểm total) fail trên DB đó như trước.
+- Ván thua/ván cực ngắn hợp lệ có thể bị từ chối (`code-breaker` thua cần ≥ 23 s, `word-guess` thua ≥ 12 s, `minesweeper` đạp mìn < 3 s) — chỉ ảnh hưởng UX, không ảnh hưởng leaderboard (review R8). `scoring.test.ts` F5 suy biên từ chính luật; giá trị được chốt ở `seed.test.ts` — sửa luật phải sửa cả hai (R9).
+- Ba bản mã (monorepo, `play-sprint-be`, `play-sprint`) — session chính phải chép `apps/games`, seed, docs, contract 0.5.2 và 20 thumbnail sang đúng repo.
+- Thời gian chạy e2e tăng (25 game × kiểm `ready`).
+
+#### Câu hỏi mở (mặc định đang dùng)
+- Dùng tên trung tính (Maze Chomp, Block Drop, Sky Hop, Code Breaker, Word Guess, Sea Battle…) thay tên thương hiệu (Pac-Man, Tetris, Doodle Jump, Mastermind, Wordle, Battleship…)? (mặc định: **có**, như Brick Breaker/Merge 2048 hiện có)
+- Mức độ khó khoá cho game xếp hạng? (mặc định: Medium; `sliding-puzzle` Easy 3×3 cho "chơi nhanh")
+- 5 game không xếp hạng (Chess, Checkers, Sudoku, Solitaire, Sea Battle) có chấp nhận không, hay xếp hạng Sudoku theo thời gian giải (cần thiết kế điểm riêng)? (mặc định: không xếp hạng)
+- Lượt thua của game `asc` ghi điểm phạt (`word-guess` 7, `code-breaker` 11) và có thể xuất hiện trên leaderboard nếu người đó chưa từng thắng — chấp nhận? (mặc định: có)
 
 ## Rủi ro & ghi chú
 - Agent không có thông tin đăng nhập PostgreSQL local: test DB và e2e full-stack sẽ `skip` cho tới khi người dùng đặt `DATABASE_URL`/`TEST_DATABASE_URL` trong `.env` và chạy `pnpm db:migrate && pnpm db:seed`.

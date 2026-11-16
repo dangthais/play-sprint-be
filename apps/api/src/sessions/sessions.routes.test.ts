@@ -86,6 +86,26 @@ describe('POST /api/sessions', () => {
     expect(x.repo.all()).toHaveLength(0);
   });
 
+  it('422 GAME_NOT_RANKED for chess; 201 for maze-chomp (F5 AC10)', async () => {
+    const x = mk();
+    const res = await x.app.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      headers: JSON_HEADERS,
+      payload: { gameId: 'chess' },
+    });
+    expectError(res, 422, 'GAME_NOT_RANKED');
+    expect(x.repo.all()).toHaveLength(0);
+    const ok = await x.app.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      headers: JSON_HEADERS,
+      payload: { gameId: 'maze-chomp' },
+    });
+    expect(ok.statusCode).toBe(201);
+    expect(ok.json().session.gameId).toBe('maze-chomp');
+  });
+
   it.each(['no-such-game', 'Snake', 'a'.repeat(65), 'sn/ake', '..', ''])(
     '404 for unknown or malformed slug %j (AC4)',
     async (gameId) => {

@@ -150,6 +150,8 @@ Index: `CREATE INDEX games_created_at_id_idx ON games (created_at DESC, id ASC);
 
 Thứ tự API: `tic-tac-toe, merge-2048, memory-match, brick-breaker, snake`. Mô tả (tiếng Việt, ≤ 500 ký tự) phản ánh đúng game thật và cách điều khiển; cả 5 game đều có `description`.
 
+**F5 (ADR-038):** thêm 20 game → tổng **25**. Danh sách đầy đủ (`id`, `title`, `tags`, `orientation`, mô tả) nằm ở `docs/implementation-plan.md` mục F5; `created_at = 2026-11-10T00:00:00Z + i giờ` (i = 0..19 theo bảng đó). 5 game ở trên giữ nguyên. Thứ tự API: `maze-chomp, block-drop, sky-hop, space-shooter, asteroid-blaster, frog-crossing, bubble-pop, mole-smash, typing-race, simon-says, minesweeper, sliding-puzzle, code-breaker, word-guess, reversi, chess, checkers, sudoku, solitaire, sea-battle, tic-tac-toe, merge-2048, memory-match, brick-breaker, snake`.
+
 ### 5.4 Game vendored (`apps/games`, ADR-009)
 Nguồn: https://github.com/he-is-talha/html-css-javascript-games, commit `aafbeac2119b9442790aee50cd143cdc4aeb1f88`, MIT © 2024 Talha Bin Yousaf.
 
@@ -160,6 +162,22 @@ Nguồn: https://github.com/he-is-talha/html-css-javascript-games, commit `aafbe
 | `tic-tac-toe` | `15-Tic-Tac-Toe` | luôn 0 (hai người chơi cùng máy, không có điểm) | có người thắng hoặc hoà |
 | `memory-match` | `22-Memory-Card-Game` | **F3:** số lượt lật (mỗi lần lật thẻ thứ hai của một cặp = 1 lượt; ≥ 8 khi thắng; ít hơn tốt hơn). F2: số cặp đã khớp | khớp đủ 8 cặp |
 | `brick-breaker` | `18-Breakout-Game` | số gạch phá trong lượt | bóng chạm đáy (gửi trước khi upstream reset điểm), sau đó ván mới |
+| `maze-chomp` (F5) | `02-Pac-Man-Game` | 10/viên, 50/viên lớn (≤ 3800) | ăn hết viên hoặc hết 3 mạng |
+| `sky-hop` (F5) | `04-Doodle-Jump-Game` | độ cao `floor(px/8)` | rơi khỏi màn hình |
+| `block-drop` (F5) | `20-Tetris-Game` | điểm upstream (khối + hàng theo cấp) | khối chạm đỉnh |
+| `space-shooter` (F5) | `42-Space-Invaders-Game` | 10/alien, cộng dồn qua đợt (khoá Medium) | hết mạng (qua đợt không phải `gameOver`) |
+| `asteroid-blaster` (F5) | `43-Asteroids-Game` | 20/50/100 theo cỡ đá, 200/UFO (khoá Medium) | thắng 5 đợt hoặc hết mạng |
+| `frog-crossing` (F5) | `46-Frogger-Game` | điểm upstream (khoá Medium) | đủ 5 tổ hoặc hết mạng |
+| `bubble-pop` (F5) | `40-Bubble-Shooter-Game` | 10/bóng nổ, 15/bóng rơi (khoá Medium) | dọn sạch hoặc chạm vạch |
+| `mole-smash` (F5) | `35-Whack-A-Mole-Game` | số lần đập trúng | hết 10 s |
+| `typing-race` (F5) | `27-Typing-Game` | số từ gõ đúng (khoá Medium) | hết giờ |
+| `simon-says` (F5) | `36-Simon-Says-Game` | số cấp vượt qua | bấm sai |
+| `minesweeper` (F5) | `16-Minesweeper-Game` | số ô đã mở (54 = thắng) | đạp mìn hoặc mở hết |
+| `sliding-puzzle` (F5) | `37-Sliding-Puzzle-Game` | số bước (**asc**, khoá 3×3) | giải xong |
+| `code-breaker` (F5) | `38-Mastermind-Game` | số lượt đoán (**asc**; thua = 11; khoá Medium) | đoán đúng hoặc hết 10 lượt |
+| `word-guess` (F5) | `11-Wordle-Game` | số lượt đoán (**asc**; thua = 7; khoá Medium, tắt gợi ý) | đoán đúng hoặc hết 6 lượt |
+| `reversi` (F5) | `44-Reversi-Game` | số quân đen của người chơi (khoá Medium) | hết nước đi |
+| `chess`, `checkers`, `sudoku`, `solitaire`, `sea-battle` (F5) | `03-Chess-Game`, `41-Checkers-Game`, `06-Sudoku-Game`, `05-Solitaire-Game`, `48-Battleship-Game` | luôn 0 (không xếp hạng) | ván kết thúc (thắng/thua/hoà) |
 
 ### 5.5 Bảng `game_scoring_rules` (F3, migration `apps/api/migrations/002_sessions_scoring.sql`, ADR-016)
 Một dòng = game có xếp hạng. Game **không có dòng** → `ranked = false` (Tic Tac Toe).
@@ -183,6 +201,23 @@ Seed (trong `apps/api/src/db/seed.ts`, upsert theo `game_id`; công thức ở A
 | `merge-2048` | desc | 0 | 250000 | 0 | 100 | 250 | — |
 | `brick-breaker` | desc | 0 | 20000 | 0 | 45 | 10 | — |
 | `memory-match` | asc | 8 | 1000 | 3000 | 0 | — | 1000 |
+| `maze-chomp` (F5) | desc | 0 | 3800 | 0 | 200 | 90 | — |
+| `sky-hop` (F5) | desc | 0 | 1000000 | 0 | 100 | 200 | — |
+| `block-drop` (F5) | desc | 0 | 1000000 | 0 | 500 | 250 | — |
+| `space-shooter` (F5) | desc | 0 | 100000 | 0 | 100 | 200 | — |
+| `asteroid-blaster` (F5) | desc | 0 | 200000 | 0 | 2000 | 300 | — |
+| `frog-crossing` (F5) | desc | 0 | 5000 | 0 | 2500 | 150 | — |
+| `bubble-pop` (F5) | desc | 0 | 1000000 | 0 | 600 | 60 | — |
+| `mole-smash` (F5) | desc | 0 | 50 | 9500 | 0 | — | — |
+| `typing-race` (F5) | desc | 0 | 5000 | 9000 | 0 | — | 1900 |
+| `simon-says` (F5) | desc | 0 | 200 | 0 | 0 | — | 3000 |
+| `minesweeper` (F5) | desc | 0 | 54 | 3000 | 0 | — | — |
+| `sliding-puzzle` (F5) | asc | 1 | 5000 | 2000 | 0 | — | 100 |
+| `code-breaker` (F5) | asc | 1 | 11 | 3000 | 0 | — | 2000 |
+| `word-guess` (F5) | asc | 1 | 7 | 3000 | 0 | — | 1500 |
+| `reversi` (F5) | desc | 0 | 64 | 3000 | 0 | — | — |
+
+Game F5 không có dòng luật (không xếp hạng): `chess`, `checkers`, `sudoku`, `solitaire`, `sea-battle`. Căn cứ từng ngưỡng: ADR-039.
 
 ### 5.6 Bảng `sessions` (F3, cùng migration 002, ADR-015/017/018)
 | Cột | Kiểu | Ràng buộc |
@@ -310,7 +345,7 @@ Index: `auth_sessions_user_idx ON auth_sessions (user_id)` (xoá mọi phiên kh
 - Hệ quả: CI sau này cần một PostgreSQL service để chạy đủ bộ test DB + full-stack. E2E trang chơi dùng API giả lập nhưng games server **thật** (không cần DB).
 - Bổ sung F3: `buildApp` nhận thêm `sessionsRepository` (pg + in-memory, cùng ngữ nghĩa atomic), `clock?: () => number` (ms, mặc định `Date.now`; một đồng hồ dùng chung cho rate limiter và sessions, sessions tạo `new Date(clock())`), `trustProxy?` và `rateLimits?` (ghi đè giới hạn trong test). Logic xác minh điểm, chuẩn hoá nickname, sinh/hash token, rate limiter là **hàm thuần** có unit test đầy đủ; SQL của repository pg giữ đơn giản và có test (skip khi thiếu `TEST_DATABASE_URL`) gồm test hai lần nộp đồng thời.
 
-### ADR-009: Vendor 5 game bên thứ ba (MIT), chỉnh sửa tối thiểu, ghi nguồn
+### ADR-009: Vendor 5 game bên thứ ba (MIT), chỉnh sửa tối thiểu, ghi nguồn — *mở rộng bởi ADR-038 (thêm 20 game F5, cùng repo/commit)*
 - Bối cảnh: người dùng chọn "tích hợp hẳn 5 game" từ repo MIT `he-is-talha/html-css-javascript-games`. Mã bên thứ ba là dữ liệu không tin cậy; game dùng tài nguyên ngoài (favicon i.ibb.co, Google Fonts, Font Awesome cdnjs), Snake dùng `localStorage` và `alert` — đều hỏng/không được phép trong sandbox + CSP của nền tảng.
 - Quyết định: chép đúng các file cần thiết của 5 thư mục (bảng §5.4) vào `apps/games/public/games/<id>/` từ commit `aafbeac2…`. Chỉ sửa ở mức cần để: (1) bỏ mọi tài nguyên ngoài (font hệ thống thay web font, bỏ favicon, icon mũi tên Snake bằng ký tự Unicode); (2) chạy được trong sandbox không `allow-same-origin`/`allow-modals` (Snake: `localStorage` bọc try/catch, thay `alert`+`reload` bằng lớp phủ "Game Over" dựng bằng DOM API/`textContent` với nút "Chơi lại"); (3) gọi SDK (`QP.ready/score/gameOver`); (4) sửa lỗi upstream chặn việc chơi tiếp (Breakout: điều kiện hiện lại gạch dùng `brickRowCount * brickColumnCount`). Mỗi file đã sửa có comment đầu file "Modified for Quick Playing — xem apps/games/UPSTREAM.md". Giữ nguyên văn `LICENSE` upstream tại `apps/games/public/games/LICENSE.txt` (được phục vụ cùng game) và `apps/games/UPSTREAM.md` (URL repo, commit, ánh xạ thư mục → id, danh sách thay đổi từng game). Thư mục vendored bị loại khỏi ESLint/Prettier.
 - Hệ quả: đáp ứng điều kiện MIT (giữ notice). Cập nhật upstream là thủ công (diff theo UPSTREAM.md). Thumbnail giữ SVG tự tạo của nền tảng. 20 thumbnail SVG của game mẫu F1 không còn dùng — **giữ lại** trong F2 (repo chưa có commit nên xoá là không khôi phục được); dọn khi người dùng đồng ý.
@@ -388,6 +423,7 @@ Index: `auth_sessions_user_idx ON auth_sessions (user_id)` (xoá mọi phiên kh
     - **memory-match**: 8 cặp; điểm = số lượt lật cặp (≥ 8). Mỗi lượt sai khoá bàn 1200 ms (`setTimeout(…, 1200)`) ⇒ thực tế `durationMs ≥ 1200·(score − 8)`. Luật: `min_score = 8`, `max_score = 1000`, `durationMs ≥ 3000 + 1000·(score − 8)` (sàn 3 s cho 16 cú nhấp; 1000 ms/lượt sai chừa 200 ms cho độ trễ). `scoreOrder = asc`.
     - **tic-tac-toe**: không có dòng luật ⇒ không xếp hạng (hai người cùng máy, `gameOver.score` luôn 0).
   - Mã game: chỉ `memory-match/script.js` đổi (đếm lượt, `QP.score(moves)`, `QP.gameOver(moves)`); giao thức v1 không đổi.
+- Ngưỡng 15 game F5: ADR-039 (cùng công thức, không đổi `verifyScore`).
 - Hệ quả: chỉnh ngưỡng = cập nhật seed (upsert) không cần deploy code. Ngưỡng là **giới hạn thiệt hại**, không phải bằng chứng ván đã chơi: kẻ gian vẫn nộp được điểm "hợp lý" (vd. Snake ~150 điểm sau 1 phút chờ) — leaderboard có thể bị nhiễm, giảm bằng rate limit + cột `hidden`. Chống gian lận mạnh hơn (replay input, mô phỏng server) ngoài phạm vi. Ngưỡng có thể chặn nhầm trong trường hợp cực hiếm (màn hình > 240 Hz với Brick Breaker) — theo dõi log `score_rejected` để nới.
 
 ### ADR-017: Vòng đời phiên, thời gian server, nộp một lần atomic, nộp lại idempotent
@@ -638,3 +674,35 @@ Index: `auth_sessions_user_idx ON auth_sessions (user_id)` (xoá mọi phiên kh
   - E2E full-stack ở lại monorepo. Đổi contract: sửa ở repo BE trước rồi chép sang FE (README FE đã ghi).
   - Tách bằng sao chép file (không giữ lịch sử git — monorepo mới có 2 commit, lịch sử vẫn còn ở monorepo); `git init`; commit/push chỉ khi người dùng yêu cầu.
 - Hệ quả: ba nơi có mã (monorepo, FE, BE) — nguy cơ lệch; cần quyết định monorepo còn vai trò gì sau khi tách (câu hỏi mở).
+
+### ADR-038: F5 — thêm 20 game từ cùng repo upstream; tên trung tính, khoá độ khó cho game xếp hạng, mẫu tích hợp chung
+- Bối cảnh: người dùng duyệt thêm 20 game (tổng 25) từ `he-is-talha/html-css-javascript-games` @ `aafbeac2…` (MIT, cùng giấy phép đã có). 45 thư mục còn lại khác nhau rất nhiều: một số phụ thuộc CDN/thư viện (three.js, GSAP, jQuery), API mạng, microphone, ảnh ngoài; nhiều game "thế hệ mới" của repo có màn chọn độ khó (Easy/Medium/Hard) và màn Start; một số là cờ bạc hoặc không phải game. Catalog chỉ có một leaderboard mỗi game (`game_scoring_rules` theo `game_id`).
+- Quyết định:
+  - **Chọn 20 game** theo bảng ở `docs/implementation-plan.md` mục F5 (15 xếp hạng, 5 không xếp hạng). Loại: CDN/thư viện ngoài không gỡ được, `fetch` ra mạng, Web Speech, cờ bạc (Blackjack, Poker), simulator/không kết thúc, trùng thể loại, ảnh thương hiệu/bản quyền. Có danh sách dự phòng.
+  - **Tên/`id` trung tính** (Maze Chomp, Block Drop, Sky Hop, Space Shooter, Asteroid Blaster, Frog Crossing, Mole Smash, Code Breaker, Word Guess, Sea Battle…), như Brick Breaker/Merge 2048 đã làm — tránh tên thương hiệu đã đăng ký. Dùng lại `id` của catalog mẫu F1 khi trùng thể loại (`block-drop`, `minesweeper`, `sudoku`, `space-shooter`, `solitaire`, `bubble-pop`, `sliding-puzzle`, `simon-says`, `typing-race`) để DB dev còn dòng F1 được upsert thành game thật.
+  - **Game xếp hạng có nhiều độ khó → khoá một mức** (thường Medium; `sliding-puzzle` Easy 3×3), ẩn màn chọn mức/nút đổi mức và các trợ giúp làm lệch điểm (gợi ý của `word-guess`). Lý do: một leaderboard phải so sánh cùng luật; leaderboard theo độ khó cần đổi schema (ngoài phạm vi). Game không xếp hạng giữ nguyên lựa chọn.
+  - **Game không có điểm có ý nghĩa** (cờ vua/đam vs máy hoặc hai người, Sudoku có 3 kích thước, Solitaire, Sea Battle) → không xếp hạng, `QP.gameOver(0)` như tic-tac-toe.
+  - **Game `asc` có thể thua** (`word-guess`, `code-breaker`): thua gửi `maxGuesses + 1` (luôn kém mọi ván thắng) thay vì không gửi `gameOver` (host kẹt ở `playing`) hay gửi 0 (sẽ là điểm tốt nhất).
+  - **Điểm trần thấp / hoà nhiều** (`minesweeper` 54, `reversi` 64, `mole-smash`, game `asc`): dùng sẵn quy tắc hoà của leaderboard (thời lượng ngắn hơn đứng trước, ADR-018/026) — không thêm cơ chế "điểm = thời gian".
+  - **Mẫu tích hợp chung** (bổ sung ADR-009, chi tiết ở plan F5): bỏ tài nguyên ngoài; thay `alert`/`history.go`/handler inline bằng DOM API; bọc/bỏ `localStorage`; `QP.ready()` khi tải trang **không cần thao tác** (host chờ tối đa 15 s) và khi bắt đầu ván mới sau ván trước, không gọi lại ở lần bấm Start đầu tiên; `QP.gameOver` đúng một lần mỗi ván; game không có nút chơi lại được thêm lớp phủ "Chơi lại" (`location.reload()`); sửa lỗi upstream chặn việc chơi (vd. `missedColor` của Simon, cấp 11 của Block Drop). Thumbnail: 20 SVG mới theo phong cách 5 thumbnail hiện có (ghi đè 9 file F1 cùng tên).
+  - Không đổi giao thức (v1), SDK, games server, `GameHost`, schema DB, schema API; contract chỉ tăng patch (0.5.2) cho mô tả/ví dụ.
+- Hệ quả: catalog 25 game (3 trang ở trang chủ, `PAGE_SIZE = 12`) không cần đổi mã FE/BE ngoài seed. Người chơi mất lựa chọn độ khó ở game xếp hạng. Lượng mã vendored tăng nhiều → review và cập nhật upstream tốn công hơn (ánh xạ trong `apps/games/UPSTREAM.md`). Một số game chỉ chơi bằng bàn phím. Game có màn Start tạo phiên ngay khi tải trang → thêm phiên bỏ dở (job dọn ADR-035).
+
+### ADR-039: Luật điểm cho 15 game xếp hạng F5 (mở rộng ADR-016)
+- Bối cảnh: cùng mô hình ADR-016 (`min/max`, `min_duration_ms`, `score_slack + max_score_per_sec × giây`, `min_ms_per_score`); `durationMs` do server đo từ lúc tạo phiên (ngay sau `ready` khi tải trang) nên luôn ≥ thời gian chơi thật trừ khoảng một RTT.
+- Quyết định (giá trị ở bảng §5.5; suy từ mã upstream, chưa đo thực tế):
+  - `maze-chomp`: bản đồ có 360 viên (10) + 4 viên lớn (50) ⇒ tối đa 3800, ăn hết là kết thúc. Pac-Man đi 8 ô/s (theo `delta`, không phụ thuộc tần số quét) ⇒ ≤ 80 điểm/s + viên lớn ⇒ trần `200 + 90 × giây`. Số viên do T2 kiểm lại.
+  - `sky-hop`: mỗi cú nảy lên tối đa `12²/(2·0,45) = 160 px` trong ~27 khung ⇒ ≤ ~0,75 điểm/khung (45/s ở 60 Hz, ~108/s ở 144 Hz, ~180/s ở 240 Hz — vật lý theo khung hình). Trần `100 + 200 × giây` (nới ở T8 cho màn hình tần số quét cao); tối đa 1 000 000.
+  - `block-drop`: điểm/giây tăng theo cấp (≤ ~42 × cấp khi thả liên tục), cấp chỉ tăng khi điểm vượt `1000 × 2^(cấp−1)` nên trung bình cả ván thấp. Trần `500 + 250 × giây`; tối đa 1 000 000.
+  - `space-shooter` (Medium): 10 điểm/alien, hồi chiêu 12 khung ⇒ ≤ 50/s ở 60 Hz, 120/s ở 144 Hz, 200/s ở 240 Hz nếu trúng mọi phát (theo khung hình). Trần `100 + 200 × giây` (nới ở T8: giá trị 60 ban đầu từ chối nhầm người chơi màn hình ≥ 120 Hz); tối đa 100 000.
+  - `asteroid-blaster` (Medium, theo `delta`): 5 đợt × (4..8 đá lớn × 520 điểm) = 15 600 + UFO 200 (xuất hiện từ đợt 3, có thể "cày"). Hồi chiêu 180 ms ⇒ ≤ ~1100/s tức thời; người chơi giỏi ~140/s. Trần `2000 + 300 × giây`; tối đa 200 000.
+  - `frog-crossing` (Medium): mỗi chuyến ≤ 12 hàng × 10 + 200 + 10 × 35 s = 670, ≥ 12 bước × 160 ms; 5 tổ + 1000 + điểm hàng làm lại sau khi chết ⇒ ≤ ~4600. Tối đa 5000; trần `2500 + 150 × giây` (slack nâng từ 1700 ở T8 theo review: 5 chuyến ~3 s mỗi chuyến có thể đạt ~4200 ở 15 s).
+  - `bubble-pop` (Medium): tổng bóng từng có = 38 ban đầu + số phát bắn, mỗi bóng ≤ 15 điểm; mỗi phát bay ≥ ~0,25 s (240 Hz) ⇒ trần `600 + 60 × giây`.
+  - `mole-smash`: ván cố định 10 s sau khi bấm Start; mỗi lần trồi 200–1000 ms ⇒ ≤ 50. `min_duration_ms = 9500` (chừa RTT).
+  - `typing-race` (Medium): bắt đầu 10 s, mỗi từ đúng +3 s rồi trừ ngay 1 s ⇒ ván kéo dài đúng `10 + 2 × số từ` giây ⇒ `min_duration_ms = 9000`, `min_ms_per_score = 1900`.
+  - `simon-says`: cấp n tốn ≥ 600·n ms phát chuỗi + 3 s chờ giữa cấp ⇒ `min_ms_per_score = 3000` (cận dưới tuyến tính); tối đa 200.
+  - `minesweeper`: 8×8, 10 mìn ⇒ 0..54; mở loang nên không giới hạn tốc độ; `min_duration_ms = 3000`.
+  - `sliding-puzzle` (3×3, asc): ≥ 1 bước, mỗi bước là một cú nhấp ⇒ `min_duration_ms = 2000`, 100 ms/bước.
+  - `code-breaker` (asc, 1..11): mỗi lượt ≥ 5 cú nhấp ⇒ 3000 + 2000 ms/lượt. `word-guess` (asc, 1..7): mỗi lượt gõ 5 chữ + Enter ⇒ 3000 + 1500 ms/lượt.
+  - `reversi` (Medium): 0..64; AI chờ 400 ms mỗi nước. Ván có thể kết thúc sớm khi một bên bị xoá sạch quân (ván ngắn nhất ~9 nước), nên `min_duration_ms = 3000` (hạ từ 8000 ở T8 để không từ chối nhầm ván thắng/thua nhanh).
+- Hệ quả: như ADR-016 — ngưỡng chỉ giới hạn thiệt hại; game `asc` và game trần thấp vẫn bị nộp "điểm tốt nhất ở thời lượng tối thiểu". Game vật lý theo khung hình (`sky-hop`, `space-shooter`, `bubble-pop`) có thể bị từ chối nhầm trên màn hình > 144 Hz. Nếu T2–T4 báo hằng số khác giả định, session chính sửa seed + bảng §5.5 (upsert, không cần migration). Theo dõi log `score_rejected` theo `reason` để nới/siết.

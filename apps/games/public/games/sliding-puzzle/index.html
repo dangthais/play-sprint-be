@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <!-- Modified for Quick Playing — xem apps/games/UPSTREAM.md -->
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Talha - Sliding Puzzle Game</title>
+
+    <!-- More html-css-js Games Calculators Games Cards Elements Projects on https://www.github.com/he-is-talha -->
+
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="wrapper">
+      <!-- Game screen (độ khó khoá ở 3x3, không có màn chọn mức) -->
+      <div id="gameScreen" class="game-screen">
+        <header class="header">
+          <h1>Sliding Puzzle</h1>
+          <button type="button" id="helpBtnGame" class="help-btn" title="How to play" aria-label="How to play">?</button>
+          <span class="level-badge" id="levelBadge">3×3</span>
+          <div class="header-actions">
+            <span class="moves" id="moves">Moves: 0</span>
+            <button type="button" id="newGameBtn" class="btn">New Game</button>
+          </div>
+        </header>
+
+        <main class="game-container">
+          <div id="board" class="board" role="grid" aria-label="Sliding puzzle board"></div>
+        </main>
+
+        <!-- Win overlay -->
+        <div id="winOverlay" class="win-overlay hidden">
+          <div class="win-box">
+            <h2>You solved it!</h2>
+            <p id="winMoves">Moves: 0</p>
+            <div class="win-actions">
+              <button type="button" id="playAgainBtn" class="btn btn-large">Play Again</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- How to play modal -->
+    <div id="helpOverlay" class="help-overlay hidden" aria-hidden="true">
+      <div class="help-modal" role="dialog" aria-labelledby="helpTitle" aria-modal="true">
+        <div class="help-header">
+          <h2 id="helpTitle">How to play</h2>
+          <button type="button" id="helpClose" class="help-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="help-body">
+          <p>Slide the numbered tiles into order.</p>
+          <ul>
+            <li><strong>Goal:</strong> Arrange the tiles from 1 to 8 in order. The empty space should be in the bottom-right.</li>
+            <li><strong>Move:</strong> Click or tap any tile that is next to the empty space (above, below, left, or right). That tile will slide into the empty spot.</li>
+            <li><strong>Score:</strong> The fewer moves, the better.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <script src="/sdk/config.js"></script>
+    <script src="/sdk/qp-sdk.js"></script>
+    <script src="script.js"></script>
+  </body>
+</html>

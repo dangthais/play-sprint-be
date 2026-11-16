@@ -269,7 +269,7 @@ describe('ranked / scoreOrder (AC2)', () => {
     expect(detail.ranked).toBe(ranked);
     expect(detail.scoreOrder).toBe(order);
     expect('scoreOrder' in detail).toBe(order !== undefined);
-    const list = (await a.inject({ method: 'GET', url: '/api/games' })).json().items;
+    const list = (await a.inject({ method: 'GET', url: '/api/games?limit=50' })).json().items;
     expect(list.find((g: { id: string }) => g.id === id)).toEqual(detail);
   });
 });

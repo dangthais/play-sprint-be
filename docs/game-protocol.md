@@ -38,6 +38,33 @@ Trạng thái phía host: `loading` -> (`ready`) `playing` -> (`gameOver`) `over
 | `brick-breaker` | số gạch đã phá | cao là tốt |
 | `memory-match` | số lượt lật (mỗi lần lật đủ một cặp thẻ) | **thấp là tốt**; hoàn hảo = 8 |
 | `tic-tac-toe` | luôn 0 | không xếp hạng |
+| `sea-battle` | luôn 0 | không xếp hạng |
+| `solitaire` | luôn 0 | không xếp hạng |
+| `sudoku` | luôn 0 | không xếp hạng |
+| `checkers` | luôn 0 | không xếp hạng |
+| `chess` | luôn 0 | không xếp hạng |
+| `reversi` | số quân đen (người chơi) khi hết ván, 0-64; khoá mức Medium | cao là tốt |
+| `word-guess` | số lượt đoán khi thắng (1-6); thua = 7; khoá Medium | **thấp là tốt** |
+| `code-breaker` | số lượt đoán khi thắng (1-10); thua = 11; khoá Medium | **thấp là tốt** |
+| `sliding-puzzle` | số bước trượt khi giải xong (bàn 3x3) | **thấp là tốt** |
+| `minesweeper` | số ô đã mở (0-54; 54 = thắng) | cao là tốt |
+| `simon-says` | số cấp đã vượt qua | cao là tốt |
+| `typing-race` | số từ gõ đúng; khoá Medium | cao là tốt |
+| `mole-smash` | số lần đập trúng trong 10 giây | cao là tốt |
+| `bubble-pop` | điểm upstream (10/bóng nổ, 15/bóng rơi); khoá Medium | cao là tốt |
+| `frog-crossing` | điểm upstream (10/hàng tiến, 200 + 10 x giây còn lại/tổ, 1000 khi thắng); khoá Medium | cao là tốt |
+| `asteroid-blaster` | điểm upstream (20/50/100 theo cỡ đá, 200/UFO); khoá Medium | cao là tốt |
+| `space-shooter` | điểm upstream (10/alien, cộng dồn qua các đợt); khoá Medium | cao là tốt |
+| `sky-hop` | độ cao = floor(px/8) | cao là tốt |
+| `block-drop` | điểm upstream (5 x cấp/khối, 40 x cấp/hàng) | cao là tốt |
+| `maze-chomp` | điểm upstream (10/viên, 50/viên lớn; tối đa 3800) | cao là tốt |
+
+Quy tắc `ready` (host báo lỗi nếu không nhận `ready` trong 15 giây sau `load`):
+
+- Game **phải** gọi `QP.ready()` ngay khi tải trang, không cần thao tác người dùng (kể cả game có màn chọn hoặc nút Start).
+- Game **phải** gọi `QP.ready()` khi dựng ván mới sau một ván đã kết thúc (Play Again/Restart); với New Game bấm giữa ván thì **nên** gọi `QP.ready()`. Host coi mỗi `ready` là một phiên mới (mỗi ván = một phiên). Lần bấm Start / "Nhấn để bắt đầu" đầu tiên ngay sau khi tải trang **không** gọi lại `ready`.
+- Ngoại lệ: một số game chỉ gọi `ready` khi New Game nếu ván trước đã kết thúc hoặc đã có thao tác (cờ `dirty`/`gameOverSent`); ngược lại `bubble-pop`, `code-breaker`, `sliding-puzzle`, `word-guess`, `reversi`, `minesweeper` gọi `ready` vô điều kiện mỗi lần New Game/Play Again (kể cả khi chưa thao tác). Cả hai cách đều hợp lệ: host chỉ cần `ready` mới cho mỗi ván.
+- `QP.gameOver(n)` đúng một lần mỗi ván.
 
 Game chỉ báo con số; game không biết gì về session hay token. Chỉ host nộp điểm cho server (`POST /sessions/{id}/score`). Chiều xếp hạng, xác minh và giới hạn điểm là việc của server (xem ADR-016 trong `docs/architecture.md`). Giao thức vẫn là v1, không đổi message.
 

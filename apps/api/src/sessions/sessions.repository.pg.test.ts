@@ -108,9 +108,9 @@ describe.skipIf(!url)('pg sessions + migration 002', () => {
     expect(await repo.findById('snake')).toMatchObject({ ranked: true, scoreOrder: 'desc' });
     expect(await repo.findById('memory-match')).toMatchObject({ ranked: true, scoreOrder: 'asc' });
     expect(await repo.findById('tic-tac-toe')).toMatchObject({ ranked: false, scoreOrder: null });
-    const list = await repo.list({ limit: 20, offset: 0 });
+    const list = await repo.list({ limit: 50, offset: 0 });
     expect(list.items.find((g) => g.id === 'tic-tac-toe')?.ranked).toBe(false);
-    expect(list.items.filter((g) => g.ranked)).toHaveLength(4);
+    expect(list.items.filter((g) => g.ranked)).toHaveLength(19);
   });
 
   describe('CHECK constraints (AC20)', () => {

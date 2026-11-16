@@ -1,12 +1,15 @@
 openapi: 3.1.0
 info:
   title: Quick Playing API
-  version: 0.5.1
+  version: 0.5.2
   description: |
     Hợp đồng API giữa frontend và backend. Cập nhật file này TRƯỚC khi thay đổi code.
     Mọi lỗi trả về dạng `Error` `{ code, message }` (không stack trace, không lỗi nội bộ).
 
     Lịch sử thay đổi:
+    - 0.5.2 (patch, F5 "20 game mới" — chỉ mô tả/ví dụ, không đổi endpoint/schema): catalog có 25 game
+      (ví dụ `GET /games` cập nhật); ý nghĩa `score` theo từng game chuyển sang tham chiếu
+      `docs/game-protocol.md` (thêm ví dụ game `asc` mới).
     - 0.5.1 (patch, Giai đoạn 4 "Production" — chỉ mô tả, không đổi endpoint/schema): thêm mục "Header
       bảo mật" (mọi response có `X-Content-Type-Options`, `Content-Security-Policy`,
       `Cross-Origin-Resource-Policy`, `Referrer-Policy`; `Cache-Control: no-store` là mặc định cho mọi
@@ -122,34 +125,35 @@ paths:
               schema: { $ref: '#/components/schemas/GameListResponse' }
               examples:
                 firstPage:
-                  summary: Trang 1, limit 2, có 5 game
+                  summary: Trang 1, limit 2, có 25 game
                   value:
                     items:
-                      - id: tic-tac-toe
-                        title: Tic Tac Toe
-                        description: Hai người chơi luân phiên đặt X và O; ai xếp đủ ba ô liên tiếp trước sẽ thắng.
-                        thumbnailUrl: http://localhost:5173/thumbnails/tic-tac-toe.svg
-                        embedUrl: http://localhost:5174/games/tic-tac-toe/
-                        orientation: any
-                        tags: [classic, board]
-                        createdAt: '2026-01-13T00:00:00.000Z'
-                        ranked: false
-                      - id: merge-2048
-                        title: Merge 2048
-                        description: Dùng phím mũi tên trượt và gộp các ô số để đạt 2048.
-                        thumbnailUrl: http://localhost:5173/thumbnails/merge-2048.svg
-                        embedUrl: http://localhost:5174/games/merge-2048/
-                        orientation: any
-                        tags: [puzzle, numbers]
-                        createdAt: '2026-01-07T00:00:00.000Z'
+                      - id: maze-chomp
+                        title: Maze Chomp
+                        description: Ăn hết các viên trong mê cung bằng phím mũi tên và né hai bóng ma; có 3 mạng.
+                        thumbnailUrl: http://localhost:5173/thumbnails/maze-chomp.svg
+                        embedUrl: http://localhost:5174/games/maze-chomp/
+                        orientation: portrait
+                        tags: [arcade, classic]
+                        createdAt: '2026-11-10T19:00:00.000Z'
                         ranked: true
                         scoreOrder: desc
-                    total: 5
+                      - id: block-drop
+                        title: Block Drop
+                        description: Xoay và thả các khối rơi để lấp đầy hàng ngang; hàng đầy sẽ biến mất.
+                        thumbnailUrl: http://localhost:5173/thumbnails/block-drop.svg
+                        embedUrl: http://localhost:5174/games/block-drop/
+                        orientation: any
+                        tags: [arcade, classic]
+                        createdAt: '2026-11-10T18:00:00.000Z'
+                        ranked: true
+                        scoreOrder: desc
+                    total: 25
                     page: 1
                     limit: 2
                 beyondLastPage:
                   summary: Trang vượt quá
-                  value: { items: [], total: 5, page: 99, limit: 20 }
+                  value: { items: [], total: 25, page: 99, limit: 20 }
         '400': { $ref: '#/components/responses/BadRequest' }
         '500': { $ref: '#/components/responses/InternalError' }
 
@@ -739,7 +743,8 @@ components:
           enum: [desc, asc]
           description: |
             Chỉ có khi `ranked = true`. `desc`: điểm cao hơn tốt hơn; `asc`: điểm thấp hơn tốt hơn
-            (vd. `memory-match`: điểm là số lượt lật cặp thẻ).
+            (vd. `memory-match`: số lượt lật cặp thẻ; `word-guess`, `code-breaker`: số lượt đoán;
+            `sliding-puzzle`: số bước).
     GameListResponse:
       type: object
       required: [items, total, page, limit]
@@ -791,8 +796,8 @@ components:
           maximum: 1000000000
           description: |
             Điểm cuối do game báo (`gameOver.score` theo `docs/game-protocol.md`). Phải là number JSON
-            nguyên (không nhận chuỗi). Ý nghĩa theo game: snake = số mồi, merge-2048 = tổng giá trị ô đã
-            gộp, brick-breaker = số gạch phá trong một lượt bóng, memory-match = số lượt lật cặp thẻ.
+            nguyên (không nhận chuỗi). Ý nghĩa theo từng game: bảng "Ý nghĩa của `score` theo từng game"
+            trong `docs/game-protocol.md` (vd. snake = số mồi, memory-match = số lượt lật cặp thẻ).
         playerName:
           type: string
           description: |

@@ -9,6 +9,34 @@ const WEB = 'http://localhost:5173';
 const GAME = 'http://localhost:5174';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public');
 
+const GAME_IDS = [
+  'snake',
+  'merge-2048',
+  'tic-tac-toe',
+  'memory-match',
+  'brick-breaker',
+  'maze-chomp',
+  'sky-hop',
+  'block-drop',
+  'space-shooter',
+  'asteroid-blaster',
+  'frog-crossing',
+  'bubble-pop',
+  'mole-smash',
+  'typing-race',
+  'simon-says',
+  'minesweeper',
+  'sliding-puzzle',
+  'code-breaker',
+  'word-guess',
+  'reversi',
+  'chess',
+  'checkers',
+  'sudoku',
+  'solitaire',
+  'sea-battle',
+];
+
 let server: http.Server;
 let port: number;
 
@@ -127,7 +155,7 @@ describe('phục vụ file', () => {
     expect(r.headers.location).toBe('/games/snake/');
   });
 
-  for (const id of ['snake', 'merge-2048', 'tic-tac-toe', 'memory-match', 'brick-breaker']) {
+  for (const id of GAME_IDS) {
     it(`/games/${id}/ trả index.html`, async () => {
       const r = await request(`/games/${id}/`);
       expect(r.status).toBe(200);
